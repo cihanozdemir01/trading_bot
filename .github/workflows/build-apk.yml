@@ -1,0 +1,44 @@
+name: Build Android APK & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚀 Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: 📦 Install Expo CLI and Dependencies
+        run: |
+          cd mobile
+          npm ci
+
+      - name: 🛠️ Setup Java JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 📱 Build Android Web / Prebuild Artifact
+        run: |
+          cd mobile
+          npx expo export --platform android
+
+      - name: 📦 Upload Web / App Bundle Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: mobile-bundle
+          path: mobile/dist
