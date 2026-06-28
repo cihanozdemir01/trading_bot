@@ -36,18 +36,25 @@ jobs:
           cd mobile
           npx expo prebuild --platform android --clean --no-install
 
-      - name: 🔨 Build Android Debug APK with Gradle
+      - name: 📦 Export Offline JS Bundle
+        run: |
+          cd mobile
+          npx expo export --platform android
+
+      - name: 🔨 Build Standalone Android APK with Gradle
         run: |
           cd mobile/android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace || ./gradlew assembleDebug --no-daemon -Pproject.ext.react="[bundleInDebug: true]"
 
       - name: 🚀 Create GitHub Release & Upload APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          body: "Otomatik oluşturulmuş sürüm: ${{ github.ref_name }}"
-          files: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          body: "Otomatik oluşturulmuş tam bağımsız (standalone) sürüm: ${{ github.ref_name }}"
+          files: |
+            mobile/android/app/build/outputs/apk/release/*.apk
+            mobile/android/app/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
