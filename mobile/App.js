@@ -198,7 +198,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* ÜST BAŞLIK & SUNUCU ROZETLERİ */}
+      {/* FERAH VE HİZALANMIŞ ÜST BAŞLIK */}
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <View style={styles.logoIcon}>
@@ -214,22 +214,17 @@ export default function App() {
             <Text style={styles.appSubTitle}>Profesyonel Kantitatif Ticaret</Text>
           </View>
         </View>
-        
-        <View style={{ flexDirection: 'row', gap: 6 }}>
-          <TouchableOpacity
-            style={styles.liveBadge}
-            onPress={() => {
-              setTempServerUrl(serverUrl);
-              setShowServerModal(true);
-            }}
-          >
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>🌐 Render Canlı</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.liveBadge, { backgroundColor: 'rgba(99,102,241,0.15)' }]} onPress={checkUpdates}>
-            <Text style={[styles.liveText, { color: '#818cf8' }]}>GitHub</Text>
-          </TouchableOpacity>
-        </View>
+
+        <TouchableOpacity
+          style={styles.liveBadge}
+          onPress={() => {
+            setTempServerUrl(serverUrl);
+            setShowServerModal(true);
+          }}
+        >
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>🌐 Render Canlı</Text>
+        </TouchableOpacity>
       </View>
 
       {/* GÜNCELLEME UYARI BARI */}
@@ -282,7 +277,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
         {/* SECENEK 1: STRATEJİ & TEST FORMU */}
         {activeTab === 'strategy' && (
           <View>
@@ -321,7 +316,7 @@ export default function App() {
                 </View>
               </View>
 
-              {/* HİZALANMIŞ TARİH GİRDİ ALANLARI */}
+              {/* SADE VE TEMİZ YYYY-AA-GG TARİH GİRDİ ALANLARI */}
               <View style={[styles.inputRow, { marginTop: 8 }]}>
                 <View style={styles.inputCol}>
                   <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
@@ -329,7 +324,7 @@ export default function App() {
                     style={styles.input}
                     value={startDate}
                     onChangeText={setStartDate}
-                    placeholder="YYYY-AA-GG (Örn: 2024-01-01)"
+                    placeholder="YYYY-AA-GG"
                     placeholderTextColor="#6b7280"
                   />
                 </View>
@@ -339,14 +334,14 @@ export default function App() {
                     style={styles.input}
                     value={endDate}
                     onChangeText={setEndDate}
-                    placeholder="YYYY-AA-GG (Boş = Günümüz)"
+                    placeholder="YYYY-AA-GG"
                     placeholderTextColor="#6b7280"
                   />
                 </View>
               </View>
             </View>
 
-            {/* PORTFÖY & RİSK YÖNETİMİ (MAX EŞZAMANLI POZİSYON EKLENDİ) */}
+            {/* PORTFÖY & RİSK YÖNETİMİ */}
             <View style={styles.sectionCard}>
               <Text style={styles.cardTitle}>💰 Portföy & Risk Yönetimi</Text>
               <View style={styles.inputRow}>
@@ -512,14 +507,6 @@ export default function App() {
 
             </View>
 
-            <TouchableOpacity style={styles.submitBtn} onPress={runBacktest} disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.submitBtnText}>🚀 Stratejiyi Test Et</Text>
-              )}
-            </TouchableOpacity>
-
             {loading && (
               <View style={styles.progressBox}>
                 <View style={styles.progressHeader}>
@@ -609,6 +596,19 @@ export default function App() {
         )}
       </ScrollView>
 
+      {/* ERGONOMİK SABİT ALT AKSİYON BARI (STRATEJİYİ TEST ET BUTONU HER ZAMAN PARMAĞINIZIN ALTINDA) */}
+      {activeTab === 'strategy' && (
+        <View style={styles.stickyBottomBar}>
+          <TouchableOpacity style={styles.stickySubmitBtn} onPress={runBacktest} disabled={loading}>
+            {loading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.stickySubmitBtnText}>🚀 STRATEJİYİ TEST ET</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* RENDER SUNUCU AYARLARI MODALI */}
       <Modal visible={showServerModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -697,14 +697,14 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0b0f19', paddingTop: 40 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logoIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
-  appTitle: { color: '#f3f4f6', fontSize: 17, fontWeight: '700' },
-  versionBadge: { backgroundColor: 'rgba(99,102,241,0.25)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#6366f1' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  logoIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#6366f1', justifyContent: 'center', alignItems: 'center' },
+  appTitle: { color: '#f3f4f6', fontSize: 16, fontWeight: '700' },
+  versionBadge: { backgroundColor: 'rgba(99,102,241,0.25)', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4, borderWidth: 1, borderColor: '#6366f1' },
   versionText: { color: '#818cf8', fontSize: 10, fontWeight: '700' },
   appSubTitle: { color: '#9ca3af', fontSize: 10 },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },
   liveText: { color: '#10b981', fontSize: 11, fontWeight: '600' },
   updateNoticeBanner: { backgroundColor: '#a855f7', padding: 10, alignItems: 'center' },
@@ -741,6 +741,9 @@ const styles = StyleSheet.create({
   selectDropdownText: { color: '#f3f4f6', fontSize: 12, fontWeight: '600' },
   submitBtn: { backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  stickyBottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#0b0f19', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
+  stickySubmitBtn: { backgroundColor: '#6366f1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', boxShadow: '0 4px 20px rgba(99, 102, 241, 0.5)' },
+  stickySubmitBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
   progressBox: { marginTop: 12, backgroundColor: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 8 },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   progressStatus: { color: '#9ca3af', fontSize: 11 },
