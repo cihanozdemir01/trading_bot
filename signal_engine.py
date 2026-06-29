@@ -14,20 +14,26 @@ class SignalEngine:
         self.use_ema_50_200 = kwargs.get("use_ema_50_200", False)
         self.use_ema_20_50 = kwargs.get("use_ema_20_50", False)
         self.use_ema_price = kwargs.get("use_ema_price", True)
+        self.use_envelope = kwargs.get("use_envelope", False)
 
         # RSI Parametreleri
-        self.rsi_op = kwargs.get("rsi_op", "less")  # 'between', 'greater', 'less'
+        self.rsi_op = kwargs.get("rsi_op", "less")
         self.rsi_val1 = float(kwargs.get("rsi_val1", 35.0))
         self.rsi_val2 = float(kwargs.get("rsi_val2", 70.0))
 
         # MACD Parametreleri
-        self.macd_cross = kwargs.get("macd_cross", "bullish")  # 'bullish', 'bearish', 'any'
-        self.macd_zero = kwargs.get("macd_zero", "any")        # 'above_zero', 'below_zero', 'any'
+        self.macd_cross = kwargs.get("macd_cross", "bullish")
+        self.macd_zero = kwargs.get("macd_zero", "any")
 
         # EMA Parametreleri
         self.ema_50_200_cross = kwargs.get("ema_50_200_cross", "bullish")
         self.ema_20_50_cross = kwargs.get("ema_20_50_cross", "bullish")
         self.ema_price_filter = kwargs.get("ema_price_filter", "above_ema50")
+
+        # ENVELOPE (VOLATILITY ENVELOPE) PARAMETRELERİ (Lookback 100, Bandwidth 8, Multiplier 3)
+        self.envelope_lookback = int(kwargs.get("envelope_lookback", 100))
+        self.envelope_bandwidth = int(kwargs.get("envelope_bandwidth", 8))
+        self.envelope_multiplier = float(kwargs.get("envelope_multiplier", 3.0))
 
         # Risk Parametreleri
         self.sl_pct = float(kwargs.get("sl_pct", 1.5))
@@ -36,6 +42,7 @@ class SignalEngine:
     def add_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
         
+        # Temel İndikatörler
         if HAS_PANDAS_TA:
             df['rsi'] = df.ta.rsi(length=14)
             macd = df.ta.macd(fast=12, slow=26, signal=9)
@@ -64,11 +71,18 @@ class SignalEngine:
             df['macd'] = ema12 - ema26
             df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
             df['macd_histogram'] = df['macd'] - df['macd_signal']
-            
+
+        # VOLATILITY ENVELOPE HESAPLAMASI (Lookback=100, Bandwidth=8, Multiplier=3.0)
+        df['env_center'] = df['close'].ewm(span=self.envelope_lookback, adjust=False).mean()
+        high_low = df['high'] - df['low']
+        df['env_atr'] = high_low.rolling(window=self.envelope_bandwidth).mean().bfill()
+        df['env_upper'] = df['env_center'] + (df['env_atr'] * self.envelope_multiplier)
+        df['env_lower'] = df['env_center'] - (df['env_atr'] * self.envelope_multiplier)
+
         return df
 
     def analyze(self, df: pd.DataFrame, symbol: str = "BTCUSDT") -> dict:
-        if len(df) < 200:
+        if len(df) < 100:
             return {"signal": "HOLD", "reason": "Yetersiz mum verisi"}
 
         df_ind = self.add_indicators(df)
@@ -89,6 +103,9 @@ class SignalEngine:
         prev_ema20 = float(prev_row['ema20']) if pd.notnull(prev_row['ema20']) else price
         prev_ema50 = float(prev_row['ema50']) if pd.notnull(prev_row['ema50']) else price
         prev_ema200 = float(prev_row['ema200']) if pd.notnull(prev_row['ema200']) else price
+
+        env_upper = float(last_row['env_upper']) if pd.notnull(last_row['env_upper']) else price * 1.05
+        env_lower = float(last_row['env_lower']) if pd.notnull(last_row['env_lower']) else price * 0.95
 
         reasons = []
 
@@ -140,22 +157,31 @@ class SignalEngine:
             elif self.ema_price_filter == "below_ema200" and not (price < ema200): ema_price_valid = False
             if ema_price_valid: reasons.append("Fiyat/EMA Konumu")
 
-        # Aktif filtre kontrolü
+        # --- 6. ENVELOPE FİLTRESİ ---
+        envelope_valid = True
+        if self.use_envelope:
+            if not (price <= env_lower or price >= env_upper):
+                envelope_valid = False
+            else:
+                reasons.append("Envelope Sınır Teması")
+
         active_filters = []
         if self.use_rsi: active_filters.append(rsi_valid)
         if self.use_macd: active_filters.append(macd_valid)
         if self.use_ema_50_200: active_filters.append(ema_50_200_valid)
         if self.use_ema_20_50: active_filters.append(ema_20_50_valid)
         if self.use_ema_price: active_filters.append(ema_price_valid)
+        if self.use_envelope: active_filters.append(envelope_valid)
 
         if len(active_filters) == 0:
-            return {"signal": "HOLD", "symbol": symbol, "price": price, "reason": "Hiçbir strateji kutucuğu seçilmedi!"}
+            return {"signal": "HOLD", "symbol": symbol, "price": price, "reason": "Hiçbir filtre seçilmedi!"}
 
         all_passed = all(active_filters)
 
         if all_passed:
             side = "BUY"
-            if (self.use_macd and self.macd_cross == "bearish") or \
+            if (self.use_envelope and price >= env_upper) or \
+               (self.use_macd and self.macd_cross == "bearish") or \
                (self.use_ema_50_200 and self.ema_50_200_cross == "bearish") or \
                (self.use_ema_20_50 and self.ema_20_50_cross == "bearish") or \
                (self.use_ema_price and "below" in self.ema_price_filter):

@@ -21,7 +21,7 @@ import {
 } from './services/UpdateService';
 
 export default function App() {
-  // Aktif Ekran / Modül Yönetimi ('home', 'backtest_module', 'live_module')
+  // Aktif Modül Yönetimi ('home', 'backtest_module', 'live_module', 'signal_module')
   const [currentModule, setCurrentModule] = useState('home');
   
   // Backtest Modülü İçinde Tab Yönetimi ('strategy', 'ai', 'history')
@@ -31,7 +31,7 @@ export default function App() {
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
 
-  // Sunucu (Backend) Bağlantı Adresi & Modal
+  // Sunucu Bağlantı Adresi
   const [serverUrl, setServerUrl] = useState('https://trading-bot-33es.onrender.com');
   const [tempServerUrl, setTempServerUrl] = useState('https://trading-bot-33es.onrender.com');
   const [showServerModal, setShowServerModal] = useState(false);
@@ -42,6 +42,12 @@ export default function App() {
 
   // Canlı İşlem Bot Durumu
   const [isBotActive, setIsBotActive] = useState(false);
+
+  // SİNYAL MODÜLÜ STATE'LERİ (Kripto Para Seçimi & Tarama)
+  const availableScanCoins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'AVAX/USDT', 'DOGE/USDT'];
+  const [selectedScanCoins, setSelectedScanCoins] = useState(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
+  const [scanResults, setScanResults] = useState([]);
+  const [scanning, setScanning] = useState(false);
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -111,6 +117,42 @@ export default function App() {
     checkUpdates();
     fetchTop5Tickers();
   }, []);
+
+  const toggleCoinSelection = (coin) => {
+    if (selectedScanCoins.includes(coin)) {
+      if (selectedScanCoins.length > 1) {
+        setSelectedScanCoins(selectedScanCoins.filter(c => c !== coin));
+      } else {
+        Alert.alert("Uyarı", "En az 1 adet kripto para seçili olmalıdır.");
+      }
+    } else {
+      setSelectedScanCoins([...selectedScanCoins, coin]);
+    }
+  };
+
+  const runEnvelopeSignalScan = async () => {
+    setScanning(true);
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      const response = await fetch(`${cleanServerUrl}/signal/scan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbols: selectedScanCoins,
+          interval: '1h'
+        })
+      });
+      const data = await response.json();
+      setScanResults(data.all_results || []);
+      if (data.telegram_sent > 0) {
+        Alert.alert("🚀 Telegram Bildirimi Gönderildi!", `${data.telegram_sent} adet canlı sinyal Telegram kanalınıza iletildi.`);
+      }
+    } catch (e) {
+      Alert.alert("Hata", "Sinyal taraması yapılırken sunucuya bağlanılamadı.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const fetchTop5Tickers = async () => {
     setLoadingTickers(true);
@@ -262,7 +304,7 @@ export default function App() {
         </TouchableOpacity>
       )}
 
-      {/* MODÜL 1: ANA EKRAN (HOME DASHBOARD & İLK 5 KRİPTO) */}
+      {/* MODÜL 1: ANA EKRAN (HOME DASHBOARD & 3 MODÜL) */}
       {currentModule === 'home' && (
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {/* İLK 5 KRİPTO CANLI FİYAT VERİSİ DOĞRULAMA KARTI */}
@@ -295,7 +337,7 @@ export default function App() {
             )}
           </View>
 
-          {/* İKİ ANA MODÜL SEÇİM KARTLARI */}
+          {/* UYGULAMA MODÜLLERİ LİSTESİ */}
           <Text style={{ color: '#f3f4f6', fontSize: 16, fontWeight: '700', marginVertical: 10, paddingLeft: 4 }}>
             🎯 Uygulama Modülleri
           </Text>
@@ -316,7 +358,23 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* MODÜL 2: CANLI İŞLEM MODÜLÜ KARTI */}
+          {/* MODÜL 2: CANLI SİNYAL & TELEGRAM MODÜLÜ KARTI */}
+          <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]} onPress={() => setCurrentModule('signal_module')}>
+            <View style={styles.moduleCardHeader}>
+              <View style={[styles.moduleIconBox, { backgroundColor: '#a855f7' }]}>
+                <Text style={{ fontSize: 24 }}>📡</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moduleTitle}>Canlı Sinyal &amp; Telegram Modülü</Text>
+                <Text style={styles.moduleSubTitle}>Envelope (100, 8, 3) volatilite indikatörü ile Telegram canlı sinyal tarayıcısı</Text>
+              </View>
+            </View>
+            <View style={styles.moduleCardFooter}>
+              <Text style={{ color: '#c084fc', fontSize: 13, fontWeight: '700' }}>📡 Sinyal Modülüne Git &amp; Tara →</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* MODÜL 3: CANLI İŞLEM MODÜLÜ KARTI */}
           <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]} onPress={() => setCurrentModule('live_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#f59e0b' }]}>
@@ -324,7 +382,7 @@ export default function App() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.moduleTitle}>Canlı Otomatik İşlem Modülü</Text>
-                <Text style={styles.moduleSubTitle}>7/24 Binance alım-satım botu, canlı sinyal tarayıcı ve pozisyon takibi</Text>
+                <Text style={styles.moduleSubTitle}>7/24 Binance alım-satım botu, canlı pozisyon ve emir takibi</Text>
               </View>
             </View>
             <View style={styles.moduleCardFooter}>
@@ -334,10 +392,94 @@ export default function App() {
         </ScrollView>
       )}
 
-      {/* MODÜL 2: BACKTEST MODÜLÜ DETAY SAYFASI */}
+      {/* MODÜL 2: CANLI SİNYAL & TELEGRAM MODÜLÜ DETAY SAYFASI */}
+      {currentModule === 'signal_module' && (
+        <View style={{ flex: 1 }}>
+          <View style={styles.moduleNavHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
+              <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#c084fc', fontSize: 14, fontWeight: '700' }}>📡 Sinyal &amp; Telegram Modülü</Text>
+          </View>
+
+          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* İNDİKATÖR BİLGİ KARTI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
+              <Text style={[styles.cardTitle, { color: '#c084fc' }]}>📈 Volatility Envelope İndikatörü</Text>
+              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                <View style={styles.miniChip}><Text style={styles.chipText}>Lookback: 100</Text></View>
+                <View style={styles.miniChip}><Text style={styles.chipText}>Bandwidth: 8</Text></View>
+                <View style={styles.miniChip}><Text style={styles.chipText}>Multiplier: 3.0x</Text></View>
+              </View>
+              <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 8 }}>
+                * Fiyat 3.0x Alt Zarfa değdiğinde 🟢 AL, Üst Zarfa değdiğinde 🔴 SAT sinyali üretip Telegram'a bildirim gönderir.
+              </Text>
+            </View>
+
+            {/* KRİPTO PARA SEÇİM SEKMESİ */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.cardTitle}>🪙 Taranacak Kripto Paraları Seçin</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {availableScanCoins.map(coin => {
+                  const isSelected = selectedScanCoins.includes(coin);
+                  return (
+                    <TouchableOpacity
+                      key={coin}
+                      style={[styles.coinChip, isSelected && styles.coinChipActive]}
+                      onPress={() => toggleCoinSelection(coin)}
+                    >
+                      <Text style={[styles.coinChipText, isSelected && styles.coinChipTextActive]}>
+                        {isSelected ? '✓ ' : '+ '}{coin}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* TARAMA BUTONU */}
+            <TouchableOpacity
+              style={[styles.submitBtn, { backgroundColor: '#a855f7', marginVertical: 10 }]}
+              onPress={runEnvelopeSignalScan}
+              disabled={scanning}
+            >
+              {scanning ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitBtnText}>📲 Piyasayı Tara ve Telegram'a Gönder</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* TARAMA SONUÇLARI LİSTESİ */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.cardTitle}>📊 Tarama Sonuçları ({scanResults.length})</Text>
+              {scanResults && scanResults.length > 0 ? (
+                scanResults.map((item, idx) => (
+                  <View key={idx} style={styles.tradeItem}>
+                    <View style={styles.tradeRow}>
+                      <Text style={styles.tickerSymbol}>{item.symbol}</Text>
+                      <View style={[styles.sideBadge, item.signal === 'BUY' ? styles.badgeBuy : item.signal === 'SELL' ? styles.badgeSell : { backgroundColor: 'rgba(156,163,175,0.2)' }]}>
+                        <Text style={styles.badgeText}>{item.signal}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 4 }}>
+                      Canlı Fiyat: ${item.price.toFixed(2)} | Durum: {item.reason}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+                  ⚠️ Henüz tarama yapılmadı. Üstteki butona basarak seçili coinleri tarayabilirsiniz.
+                </Text>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* MODÜL 3: BACKTEST MODÜLÜ DETAY SAYFASI */}
       {currentModule === 'backtest_module' && (
         <View style={{ flex: 1 }}>
-          {/* GERİ DÖNÜŞ VE TAB BAR */}
           <View style={styles.moduleNavHeader}>
             <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
               <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
@@ -345,7 +487,6 @@ export default function App() {
             <Text style={{ color: '#f3f4f6', fontSize: 14, fontWeight: '700' }}>📊 Backtest Modülü</Text>
           </View>
 
-          {/* ÖZET İSTATİSTİK KARTLARI GRİD */}
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
               <Text style={styles.statLabel}>KASA BAKİYESİ</Text>
@@ -366,7 +507,6 @@ export default function App() {
             </View>
           </View>
 
-          {/* TAB NAVİGASYON BUTONLARI */}
           <View style={styles.tabContainer}>
             <TouchableOpacity
               style={[styles.tabButton, activeTab === 'strategy' && styles.activeTabButton]}
@@ -391,7 +531,6 @@ export default function App() {
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
             {activeTab === 'strategy' && (
               <View>
-                {/* PARİTE & TARİH FİLTRESİ KARTI */}
                 <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
                   <Text style={[styles.cardTitle, { color: '#f59e0b' }]}>📅 Parite &amp; Tarih Filtresi</Text>
                   <View style={styles.inputRow}>
@@ -449,7 +588,6 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* PORTFÖY & RİSK YÖNETİMİ */}
                 <View style={styles.sectionCard}>
                   <Text style={styles.cardTitle}>💰 Portföy &amp; Risk Yönetimi</Text>
                   <View style={styles.inputRow}>
@@ -480,107 +618,36 @@ export default function App() {
                   </View>
                 </View>
 
-                {/* STRATEJİ KRİTERLERİ PANELİ */}
                 <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
                   <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
                   
-                  {/* RSI */}
                   <View style={styles.criterionBox}>
                     <View style={styles.switchRow}>
                       <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
                       <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
                     </View>
-                    {useRsi && (
-                      <View style={{ marginTop: 8 }}>
-                        <Text style={styles.subLabel}>RSI Şartı Operatörü</Text>
-                        <View style={styles.segmentedContainer}>
-                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'less' && styles.segmentedBtnActive]} onPress={() => setRsiOp('less')}>
-                            <Text style={[styles.segmentedText, rsiOp === 'less' && styles.segmentedTextActive]}>Küçük (&lt;)</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'greater' && styles.segmentedBtnActive]} onPress={() => setRsiOp('greater')}>
-                            <Text style={[styles.segmentedText, rsiOp === 'greater' && styles.segmentedTextActive]}>Büyük (&gt;)</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'between' && styles.segmentedBtnActive]} onPress={() => setRsiOp('between')}>
-                            <Text style={[styles.segmentedText, rsiOp === 'between' && styles.segmentedTextActive]}>Arasında</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <View style={[styles.inputRow, { marginTop: 8 }]}>
-                          <View style={styles.inputCol}>
-                            <Text style={styles.inputLabel}>{rsiOp === 'between' ? 'Alt Eşik' : 'Eşik Değeri'}</Text>
-                            <TextInput style={styles.input} value={rsiVal1} onChangeText={setRsiVal1} keyboardType="numeric" />
-                          </View>
-                          {rsiOp === 'between' && (
-                            <View style={styles.inputCol}>
-                              <Text style={styles.inputLabel}>Üst Eşik</Text>
-                              <TextInput style={styles.input} value={rsiVal2} onChangeText={setRsiVal2} keyboardType="numeric" />
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
                   </View>
 
-                  {/* MACD */}
                   <View style={styles.criterionBox}>
                     <View style={styles.switchRow}>
                       <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
                       <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
                     </View>
-                    {useMacd && (
-                      <View style={{ marginTop: 8 }}>
-                        <Text style={styles.subLabel}>Kesişim Yönü</Text>
-                        <View style={styles.segmentedContainer}>
-                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bullish')}>
-                            <Text style={[styles.segmentedText, macdCross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bearish')}>
-                            <Text style={[styles.segmentedText, macdCross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdCross('any')}>
-                            <Text style={[styles.segmentedText, macdCross === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
                   </View>
 
-                  {/* EMA Price */}
                   <View style={styles.criterionBox}>
                     <View style={styles.switchRow}>
                       <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
                       <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
                     </View>
-                    {useEmaPrice && (
-                      <TouchableOpacity style={styles.selectDropdownBtn} onPress={() => setShowEmaPriceModal(true)}>
-                        <Text style={styles.selectDropdownText}>{selectedEmaLabel}</Text>
-                        <Text style={{ color: '#818cf8', fontSize: 12 }}>▼ Değiştir</Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
                 </View>
-
-                {loading && (
-                  <View style={styles.progressBox}>
-                    <View style={styles.progressHeader}>
-                      <Text style={styles.progressStatus}>{progressStatus}</Text>
-                      <Text style={styles.progressPct}>%{progressPct}</Text>
-                    </View>
-                    <View style={styles.progressBarTrack}>
-                      <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
-                    </View>
-                  </View>
-                )}
               </View>
             )}
 
             {activeTab === 'ai' && (
               <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
                 <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 DERİN KANTİTATİF AI STRATEJİ DANIŞMANI</Text>
-                <View style={styles.chipCloud}>
-                  <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Derin strateji iyileştirme reçetesi hazırla')}>
-                    <Text style={styles.actionChipText}>⚡ Derin İyileştirme Reçetesi</Text>
-                  </TouchableOpacity>
-                </View>
                 {backtestResult.ai_advice && backtestResult.ai_advice.map((advice, index) => (
                   <View key={index} style={styles.adviceBox}>
                     <Text style={styles.adviceText}>{advice.replace(/\*\*/g, '')}</Text>
@@ -600,9 +667,6 @@ export default function App() {
                           <Text style={styles.badgeText}>{trade.side}</Text>
                         </View>
                         <Text style={styles.tradeDate}>{trade.entry_time ? trade.entry_time.replace('T', ' ').substring(0, 16) : 'N/A'}</Text>
-                        <Text style={[styles.tradePnl, trade.pnl >= 0 ? styles.textGreen : styles.textRed]}>
-                          {trade.pnl >= 0 ? '+' : ''}${trade.pnl} (%{trade.pnl_pct})
-                        </Text>
                       </View>
                     </View>
                   ))
@@ -627,7 +691,7 @@ export default function App() {
         </View>
       )}
 
-      {/* MODÜL 3: CANLI İŞLEM MODÜLÜ DETAY SAYFASI */}
+      {/* MODÜL 4: CANLI İŞLEM MODÜLÜ DETAY SAYFASI */}
       {currentModule === 'live_module' && (
         <View style={{ flex: 1 }}>
           <View style={styles.moduleNavHeader}>
@@ -638,7 +702,6 @@ export default function App() {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* CANLI BOT DURUMU KARTI */}
             <View style={[styles.sectionCard, { borderColor: isBotActive ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View>
@@ -658,23 +721,11 @@ export default function App() {
               </View>
             </View>
 
-            {/* AÇIK CANLI POZİSYONLAR */}
             <View style={styles.sectionCard}>
               <Text style={styles.cardTitle}>💼 Açık Canlı Pozisyonlar (0)</Text>
               <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
                 {isBotActive ? '⏳ Sinyal bekleniyor... Henüz açık pozisyon bulunmuyor.' : '⚠️ Bot pasif durumda. Canlı alım yapabilmek için üstteki botu aktif edin.'}
               </Text>
-            </View>
-
-            {/* TELEGRAM BİLDİRİM LOGLARI */}
-            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.3)' }]}>
-              <Text style={styles.cardTitle}>📲 Telegram Bildirim Geçmişi</Text>
-              <View style={styles.adviceBox}>
-                <Text style={styles.adviceText}>✅ [Sistem] Binance Testnet canlı websocket bağlantısı kuruldu.</Text>
-              </View>
-              <View style={styles.adviceBox}>
-                <Text style={styles.adviceText}>ℹ️ [Sinyal] BTCUSDT 1 Saatlik grafikte RSI < 35 şartı tarandı.</Text>
-              </View>
             </View>
           </ScrollView>
         </View>
@@ -703,34 +754,6 @@ export default function App() {
             
             <TouchableOpacity style={styles.closeBtn} onPress={() => setShowServerModal(false)}>
               <Text style={styles.closeBtnText}>İptal</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* EMA FİYAT KONUMU SEÇİM MODALI */}
-      <Modal visible={showEmaPriceModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { borderColor: '#6366f1' }]}>
-            <Text style={styles.modalTitle}>📍 Fiyat / EMA Konumu Seçin</Text>
-            <ScrollView style={{ maxHeight: 300, marginVertical: 10 }}>
-              {emaPriceOptions.map(item => (
-                <TouchableOpacity
-                  key={item.value}
-                  style={[styles.modalOptionBtn, emaPriceFilter === item.value && styles.modalOptionBtnActive]}
-                  onPress={() => {
-                    setEmaPriceFilter(item.value);
-                    setShowEmaPriceModal(false);
-                  }}
-                >
-                  <Text style={[styles.modalOptionText, emaPriceFilter === item.value && styles.modalOptionTextActive]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowEmaPriceModal(false)}>
-              <Text style={styles.closeBtnText}>Kapat</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -796,6 +819,12 @@ const styles = StyleSheet.create({
   moduleNavHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'rgba(17,24,39,0.8)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   backBtn: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
   backBtnText: { color: '#818cf8', fontSize: 12, fontWeight: '600' },
+  coinChip: { backgroundColor: 'rgba(31,41,55,0.8)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  coinChipActive: { backgroundColor: '#a855f7', borderColor: '#c084fc' },
+  coinChipText: { color: '#9ca3af', fontSize: 12, fontWeight: '600' },
+  coinChipTextActive: { color: '#ffffff', fontWeight: '700' },
+  miniChip: { backgroundColor: '#374151', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  chipText: { color: '#fff', fontSize: 11 },
   statsGrid: { flexDirection: 'row', padding: 12, gap: 8 },
   statCard: { flex: 1, backgroundColor: 'rgba(17,24,39,0.85)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   statLabel: { color: '#9ca3af', fontSize: 9, fontWeight: '700' },

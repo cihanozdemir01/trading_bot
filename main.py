@@ -3,7 +3,7 @@ import requests
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 from pydantic import BaseModel
 from config import config
@@ -13,6 +13,7 @@ from risk_manager import RiskManager
 from execution_engine import ExecutionEngine
 from notifier import TelegramNotifier
 from backtester import Backtester
+from data_feed import DataFeed
 
 app = FastAPI(
     title="Python Algoritmik Ticaret Botu",
@@ -29,11 +30,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-signal_engine = SignalEngine()
+signal_engine = SignalEngine(use_envelope=True, envelope_lookback=100, envelope_bandwidth=8, envelope_multiplier=3.0)
 risk_manager = RiskManager()
 execution_engine = ExecutionEngine()
 notifier = TelegramNotifier()
 backtester = Backtester()
+data_feed = DataFeed()
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -45,6 +47,10 @@ class AIConsultRequest(BaseModel):
     profit_factor: float
     total_trades: int
     max_drawdown: float
+
+class SignalScanRequest(BaseModel):
+    symbols: List[str]
+    interval: str = "1h"
 
 @app.on_event("startup")
 def startup_event():
@@ -77,9 +83,6 @@ def health_check():
 
 @app.get("/ticker/top5")
 def get_top5_tickers():
-    """
-    Mobil ana ekranda canlı fiyat doğrulaması için ilk 5 kripto paranın anlık fiyatlarını çeker.
-    """
     symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
     results = []
     headers = {
@@ -102,7 +105,6 @@ def get_top5_tickers():
     except Exception as e:
         print(f"Ticker çekme hatası: {e}")
     
-    # Eğer Binance engeli olursa yedek canlı fiyat verisi üret
     if not results:
         results = [
             {"symbol": "BTC/USDT", "raw_symbol": "BTCUSDT", "price": 96450.0, "change_pct": 2.45, "high": 97200.0, "low": 94800.0},
@@ -112,6 +114,60 @@ def get_top5_tickers():
             {"symbol": "XRP/USDT", "raw_symbol": "XRPUSDT", "price": 2.45, "change_pct": -1.20, "high": 2.55, "low": 2.38}
         ]
     return results
+
+@app.post("/signal/scan")
+def scan_signals(req: SignalScanRequest):
+    """
+    Seçilen kripto paraları Volatility Envelope (Lookback 100, Bandwidth 8, Multiplier 3) ile tarar.
+    Sinyal yakalandığında otomatik Telegram bildirimi gönderir!
+    """
+    scan_results = []
+    telegram_sent_count = 0
+
+    for sym in req.symbols:
+        raw_sym = sym.replace("/", "").upper()
+        df = data_feed.fetch_historical_klines(raw_sym, interval=req.interval, limit=200)
+        if df.empty or len(df) < 50:
+            continue
+
+        res = signal_engine.analyze(df, symbol=raw_sym)
+        sig = res.get("signal", "HOLD")
+        price = res.get("price", 0.0)
+
+        item = {
+            "symbol": sym,
+            "raw_symbol": raw_sym,
+            "signal": sig,
+            "price": price,
+            "reason": res.get("reason", "Nötr Bandlar Arasında"),
+            "timestamp": df.iloc[-1]['timestamp'].strftime("%H:%M:%S") if 'timestamp' in df.columns else "Şimdi"
+        }
+        scan_results.append(item)
+
+        # Eğer Sinyal BUY veya SELL ise Telegram bildirimi fırlat!
+        if sig in ("BUY", "SELL"):
+            msg = (
+                f"📡 **[CANLI ENVELOPE SİNYALİ]**\n\n"
+                f"🪙 **Parite:** {sym}\n"
+                f"🚦 **Yön:** {sig} {'🟢' if sig == 'BUY' else '🔴'}\n"
+                f"💵 **Canlı Fiyat:** ${price:,.2f}\n"
+                f"🎯 **Strateji:** Envelope (100, 8, 3.0) Volatilite Sınır Teması\n"
+                f"🕒 **Zaman:** {item['timestamp']} (UTC+3)\n\n"
+                f"💡 Telegram botunuz canlı alım/satım uyarısını iletti."
+            )
+            try:
+                notifier.send_message(msg)
+                telegram_sent_count += 1
+            except Exception as e:
+                print(f"Telegram gönderme hatası: {e}")
+
+    return {
+        "status": "success",
+        "scanned_count": len(scan_results),
+        "signals_found": [r for r in scan_results if r["signal"] != "HOLD"],
+        "all_results": scan_results,
+        "telegram_sent": telegram_sent_count
+    }
 
 @app.get("/backtest")
 def run_backtest(
@@ -135,7 +191,7 @@ def run_backtest(
     params.pop("max_open_positions", None)
     params.pop("position_pct", None)
 
-    bool_keys = ["use_rsi", "use_macd", "use_ema_50_200", "use_ema_20_50", "use_ema_price"]
+    bool_keys = ["use_rsi", "use_macd", "use_ema_50_200", "use_ema_20_50", "use_ema_price", "use_envelope"]
     for k in bool_keys:
         if k in params:
             params[k] = params[k].lower() in ("true", "1", "yes", "on")
@@ -182,28 +238,13 @@ def ai_consult(req: AIConsultRequest):
             resp.append("⚠️ **Örneklem Yetersizliği:** Gerçekleştirilen işlem sayısı 10'un altında. İstatistiksel güvenilirlik için test tarih aralığını genişletin veya daha alt zaman dilimlerine (Örn: 15m) geçin.")
         
         if wr < 50.0:
-            resp.append(f"🔴 **Düşük Win Rate (%{wr:.1f}):** Yanlış sinyal (whipsaw) oranı yüksek. Sadece osilatörlere (RSI/MACD) güvenmek yerine **Fiyat > EMA 200** ve **Hacim Filtresini** aktif edin. Bu kombinasyon konsolidasyon (yatay) bölgelerindeki hatalı alımları %38 oranında engeller.")
+            resp.append(f"🔴 **Düşük Win Rate (%{wr:.1f}):** Yanlış sinyal (whipsaw) oranı yüksek. Sadece osilatörlere (RSI/MACD) güvenmek yerine **Fiyat > EMA 200** ve **Envelope (100,8,3)** filtresini aktif edin.")
         else:
             resp.append(f"🟢 **Yüksek Win Rate (%{wr:.1f}):** Başarı oranınız güçlü. Kar katlama potansiyelini artırmak için Take Profit seviyenizi sabit %3.0 yerine Trailing Stop (Takip Eden Stop) ile dinamik hale getirin.")
 
-        if dd > 10.0:
-            resp.append(f"🛡️ **Sermaye Riski Uyarısı (Max Drawdown: %{dd:.1f}):** Peş peşe zararlı işlemler kasanızı yıpratmış. Eşzamanlı maksimum açık pozisyon sayısını 2 ile sınırlayın ve işlem başı marjin kullanımını %5'e çekin.")
-
-    elif "win rate" in q or "başarı" in q or "kazan" in q:
-        resp.append(f"\n⚡ **Win Rate & Başarı Oranı Optimizasyonu (%{wr:.1f}):**")
-        resp.append("İşlem başarı oranını artırmak için matematiksel olarak 2 kural uygulanmalıdır:")
-        resp.append("1. **Trend Onayı:** EMA 50 / 200 Golden Cross filtresi açıkken işleme girin.")
-        resp.append("2. **Osilatör Kesişimi:** RSI 35 altındayken MACD 0 çizgisinin altındaysa girilen alımlar %64 oranında yüksek kârlılıkla sonuçlanır.")
-
-    elif "risk" in q or "drawdown" in q or "zarar" in q:
-        resp.append(f"\n🛡️ **Derin Risk & Drawdown Telemetrisi (Max DD: %{dd:.1f}):**")
-        resp.append(f"Mevcut kural setinde maksimum sermaye kaybınız %{dd:.1f}. Riski %5'in altına çekmek için:")
-        resp.append("• Sabit %1.5 Stop Loss yerine ATR (Average True Range) bazlı dinamik volatilite stopu kullanın.")
-        resp.append("• Günlük maksimum %3.0 zarar limitine ulaşıldığında botun otomatik olarak 24 saat işlem kapatmasını sağlayın.")
-
     else:
         resp.append(f"\n🤖 **Genel Strateji Teşhisi:**")
-        resp.append(f"Toplam **{trades} işlem** incelendi. Profit Factor: **{pf:.2f}**. Stratejinizin performansını en üst düzeye çıkarmak için 4 Saatlik grafiklerde trend yönünü doğrulayıp 15 Dakikalık grafiklerde giriş yapmayı deneyin (Multi-timeframe analizi).")
+        resp.append(f"Toplam **{trades} işlem** incelendi. Profit Factor: **{pf:.2f}**.")
 
     return {"reply": "\n".join(resp)}
 
