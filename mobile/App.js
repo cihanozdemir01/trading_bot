@@ -26,8 +26,8 @@ export default function App() {
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
 
-  // Sunucu (Backend) Bağlantı Adresi
-  const [serverUrl, setServerUrl] = useState('http://10.0.2.2:8000'); // Gerçek telefonlar için örn: http://192.168.1.X:8000
+  // Sunucu (Backend) Bağlantı Adresi - Canlı Render Sunucusu Varsayılan Olarak Ayarlandı!
+  const [serverUrl, setServerUrl] = useState('https://trading-bot-33es.onrender.com');
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -119,7 +119,7 @@ export default function App() {
       clearInterval(timer);
       Alert.alert(
         'Bağlantı Hatası',
-        `Backend sunucusuna bağlanılamadı (${serverUrl}).\n\n💡 İPUCU: Bilgisayarınızın yerel IP adresini (Örn: http://192.168.1.35:8000) Sunucu Adresi kutusuna yazın.\n\nHata: ` + error.message
+        `Backend sunucusuna bağlanılamadı (${serverUrl}).\n\nHata: ` + error.message
       );
     } finally {
       setTimeout(() => {
@@ -241,18 +241,18 @@ export default function App() {
           <View>
             {/* SUNUCU ADRESİ AYAR KARTI */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Python Sunucu Bağlantı Adresi (API URL)</Text>
+              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucu Adresi (7/24 Kesintisiz)</Text>
               <TextInput
                 style={[styles.input, { color: '#10b981', fontWeight: '600' }]}
                 value={serverUrl}
                 onChangeText={setServerUrl}
-                placeholder="Örn: http://192.168.1.35:8000"
+                placeholder="https://trading-bot-33es.onrender.com"
                 placeholderTextColor="#6b7280"
                 autoCapitalize="none"
                 autoCorrect={false}
               />
               <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4 }}>
-                * Gerçek telefonlar bilgisayarın IP adresini kullanmalıdır (Örn: http://192.168.1.X:8000)
+                * Canlı Render bulut sunucusu 7 gün 24 saat uyanık kalacak şekilde ayarlanmıştır.
               </Text>
             </View>
 
