@@ -26,14 +26,14 @@ export default function App() {
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
 
-  // Sunucu (Backend) Bağlantı Adresi - Canlı Render Sunucusu Varsayılan Olarak Ayarlandı!
+  // Sunucu (Backend) Bağlantı Adresi
   const [serverUrl, setServerUrl] = useState('https://trading-bot-33es.onrender.com');
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
 
-  // Strateji & Risk Kriterleri
+  // Portföy & Risk Parametreleri
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState('1h');
   const [balance, setBalance] = useState('1000');
@@ -42,15 +42,37 @@ export default function App() {
   const [slPct, setSlPct] = useState('1.5');
   const [tpPct, setTpPct] = useState('3.0');
 
+  // WEBİLE %100 BİREBİR EŞLEŞEN TÜM STRATEJİ KRİTERLERİ STATE'LERİ
   const [useRsi, setUseRsi] = useState(true);
-  const [rsiOp, setRsiOp] = useState('less');
+  const [rsiOp, setRsiOp] = useState('less'); // 'less', 'greater', 'between'
   const [rsiVal1, setRsiVal1] = useState('35');
+  const [rsiVal2, setRsiVal2] = useState('70');
 
   const [useMacd, setUseMacd] = useState(true);
-  const [macdCross, setMacdCross] = useState('bullish');
+  const [macdCross, setMacdCross] = useState('bullish'); // 'bullish', 'bearish', 'any'
+  const [macdZero, setMacdZero] = useState('any'); // 'any', 'below_zero', 'above_zero'
+
+  const [useEma50200, setUseEma50200] = useState(false);
+  const [ema50200Cross, setEma50200Cross] = useState('bullish'); // 'bullish', 'bearish'
+
+  const [useEma2050, setUseEma2050] = useState(false);
+  const [ema2050Cross, setEma2050Cross] = useState('bullish'); // 'bullish', 'bearish'
 
   const [useEmaPrice, setUseEmaPrice] = useState(true);
   const [emaPriceFilter, setEmaPriceFilter] = useState('above_ema50');
+  const [showEmaPriceModal, setShowEmaPriceModal] = useState(false);
+
+  // Ema Fiyat Seçenekleri Listesi
+  const emaPriceOptions = [
+    { label: 'Fiyat > EMA 50 (Yükseliş Trendi)', value: 'above_ema50' },
+    { label: 'Fiyat < EMA 50 (Düşüş Trendi)', value: 'below_ema50' },
+    { label: 'Fiyat > EMA 20', value: 'above_ema20' },
+    { label: 'Fiyat < EMA 20', value: 'below_ema20' },
+    { label: 'Fiyat > EMA 100', value: 'above_ema100' },
+    { label: 'Fiyat < EMA 100', value: 'below_ema100' },
+    { label: 'Fiyat > EMA 200', value: 'above_ema200' },
+    { label: 'Fiyat < EMA 200', value: 'below_ema200' },
+  ];
 
   // Test Sonuçları Verisi
   const [backtestResult, setBacktestResult] = useState({
@@ -103,10 +125,10 @@ export default function App() {
       const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
       let url = `${cleanServerUrl}/backtest?symbol=${symbol}&interval=${interval}&limit=1000`;
       url += `&initial_balance=${balance}&position_pct=${posPct}&max_open_positions=${maxPos}`;
-      url += `&use_rsi=${useRsi}&use_macd=${useMacd}&use_ema_50_200=false&use_ema_price=${useEmaPrice}`;
-      url += `&rsi_op=${rsiOp}&rsi_val1=${rsiVal1}&rsi_val2=70`;
-      url += `&macd_cross=${macdCross}&macd_zero=any`;
-      url += `&ema_50_200_cross=bullish&ema_price_filter=${emaPriceFilter}&sl_pct=${slPct}&tp_pct=${tpPct}`;
+      url += `&use_rsi=${useRsi}&use_macd=${useMacd}&use_ema_50_200=${useEma50200}&use_ema_20_50=${useEma2050}&use_ema_price=${useEmaPrice}`;
+      url += `&rsi_op=${rsiOp}&rsi_val1=${rsiVal1}&rsi_val2=${rsiVal2}`;
+      url += `&macd_cross=${macdCross}&macd_zero=${macdZero}`;
+      url += `&ema_50_200_cross=${ema50200Cross}&ema_20_50_cross=${ema2050Cross}&ema_price_filter=${emaPriceFilter}&sl_pct=${slPct}&tp_pct=${tpPct}`;
 
       const response = await fetch(url);
       const data = await response.json();
@@ -158,6 +180,7 @@ export default function App() {
   };
 
   const pnlNet = backtestResult.final_balance - backtestResult.initial_balance;
+  const selectedEmaLabel = emaPriceOptions.find(o => o.value === emaPriceFilter)?.label || emaPriceFilter;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -239,11 +262,11 @@ export default function App() {
         {/* SECENEK 1: STRATEJİ & TEST FORMU */}
         {activeTab === 'strategy' && (
           <View>
-            {/* SUNUCU ADRESİ AYAR KARTI */}
+            {/* SUNUCU ADRESİ VE PARİTE AYAR KARTI */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucu Adresi (7/24 Kesintisiz)</Text>
+              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucusu & Parite</Text>
               <TextInput
-                style={[styles.input, { color: '#10b981', fontWeight: '600' }]}
+                style={[styles.input, { color: '#10b981', fontWeight: '600', marginBottom: 10 }]}
                 value={serverUrl}
                 onChangeText={setServerUrl}
                 placeholder="https://trading-bot-33es.onrender.com"
@@ -251,14 +274,41 @@ export default function App() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-              <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4 }}>
-                * Canlı Render bulut sunucusu 7 gün 24 saat uyanık kalacak şekilde ayarlanmıştır.
-              </Text>
+              <View style={styles.inputRow}>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Sembol</Text>
+                  <View style={styles.segmentedContainer}>
+                    {['BTCUSDT', 'ETHUSDT', 'SOLUSDT'].map((s) => (
+                      <TouchableOpacity
+                        key={s}
+                        style={[styles.segmentedBtn, symbol === s && styles.segmentedBtnActive]}
+                        onPress={() => setSymbol(s)}
+                      >
+                        <Text style={[styles.segmentedText, symbol === s && styles.segmentedTextActive]}>{s.replace('USDT', '')}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Zaman Dilimi</Text>
+                  <View style={styles.segmentedContainer}>
+                    {['15m', '1h', '4h', '1d'].map((tf) => (
+                      <TouchableOpacity
+                        key={tf}
+                        style={[styles.segmentedBtn, interval === tf && styles.segmentedBtnActive]}
+                        onPress={() => setInterval(tf)}
+                      >
+                        <Text style={[styles.segmentedText, interval === tf && styles.segmentedTextActive]}>{tf}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
             </View>
 
+            {/* PORTFÖY & RİSK YÖNETİMİ */}
             <View style={styles.sectionCard}>
               <Text style={styles.cardTitle}>💰 Portföy & Risk Yönetimi</Text>
-
               <View style={styles.inputRow}>
                 <View style={styles.inputCol}>
                   <Text style={styles.inputLabel}>Başlangıç ($)</Text>
@@ -282,42 +332,139 @@ export default function App() {
               </View>
             </View>
 
-            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
+            {/* YENİ ERGONOMİK & MODERN STRATEJİ KRİTERLERİ PANELİ */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
+              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri (Tam Liste)</Text>
 
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
-                <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
-              </View>
-              {useRsi && (
-                <View style={styles.inputRow}>
-                  <View style={styles.inputCol}>
-                    <Text style={styles.inputLabel}>RSI Şartı</Text>
-                    <View style={styles.chipRow}>
-                      <TouchableOpacity style={[styles.miniChip, rsiOp === 'less' && styles.activeMiniChip]} onPress={() => setRsiOp('less')}>
-                        <Text style={styles.chipText}>Küçük (&lt;)</Text>
+              {/* 1. RSI KRİTERİ */}
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
+                  <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+                {useRsi && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.subLabel}>RSI Şartı Operatörü</Text>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'less' && styles.segmentedBtnActive]} onPress={() => setRsiOp('less')}>
+                        <Text style={[styles.segmentedText, rsiOp === 'less' && styles.segmentedTextActive]}>Küçük (&lt;)</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[styles.miniChip, rsiOp === 'greater' && styles.activeMiniChip]} onPress={() => setRsiOp('greater')}>
-                        <Text style={styles.chipText}>Büyük (&gt;)</Text>
+                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'greater' && styles.segmentedBtnActive]} onPress={() => setRsiOp('greater')}>
+                        <Text style={[styles.segmentedText, rsiOp === 'greater' && styles.segmentedTextActive]}>Büyük (&gt;)</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'between' && styles.segmentedBtnActive]} onPress={() => setRsiOp('between')}>
+                        <Text style={[styles.segmentedText, rsiOp === 'between' && styles.segmentedTextActive]}>Arasında</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={[styles.inputRow, { marginTop: 8 }]}>
+                      <View style={styles.inputCol}>
+                        <Text style={styles.inputLabel}>{rsiOp === 'between' ? 'Alt Eşik' : 'Eşik Değeri'}</Text>
+                        <TextInput style={styles.input} value={rsiVal1} onChangeText={setRsiVal1} keyboardType="numeric" />
+                      </View>
+                      {rsiOp === 'between' && (
+                        <View style={styles.inputCol}>
+                          <Text style={styles.inputLabel}>Üst Eşik</Text>
+                          <TextInput style={styles.input} value={rsiVal2} onChangeText={setRsiVal2} keyboardType="numeric" />
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* 2. MACD KRİTERİ */}
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
+                  <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+                {useMacd && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.subLabel}>Kesişim Yönü</Text>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bullish')}>
+                        <Text style={[styles.segmentedText, macdCross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bearish')}>
+                        <Text style={[styles.segmentedText, macdCross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdCross('any')}>
+                        <Text style={[styles.segmentedText, macdCross === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={[styles.subLabel, { marginTop: 8 }]}>0 Çizgisi Konumu</Text>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdZero('any')}>
+                        <Text style={[styles.segmentedText, macdZero === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'below_zero' && styles.segmentedBtnActive]} onPress={() => setMacdZero('below_zero')}>
+                        <Text style={[styles.segmentedText, macdZero === 'below_zero' && styles.segmentedTextActive]}>0 Altında</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'above_zero' && styles.segmentedBtnActive]} onPress={() => setMacdZero('above_zero')}>
+                        <Text style={[styles.segmentedText, macdZero === 'above_zero' && styles.segmentedTextActive]}>0 Üstünde</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
-                  <View style={styles.inputCol}>
-                    <Text style={styles.inputLabel}>Eşik Değeri</Text>
-                    <TextInput style={styles.input} value={rsiVal1} onChangeText={setRsiVal1} keyboardType="numeric" />
-                  </View>
+                )}
+              </View>
+
+              {/* 3. EMA 50 / 200 CROSS */}
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>🔀 EMA 50/200 Cross</Text>
+                  <Switch value={useEma50200} onValueChange={setUseEma50200} trackColor={{ false: '#374151', true: '#6366f1' }} />
                 </View>
-              )}
-
-              <View style={[styles.switchRow, { marginTop: 14 }]}>
-                <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
-                <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                {useEma50200 && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.subLabel}>Golden / Death Cross</Text>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity style={[styles.segmentedBtn, ema50200Cross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setEma50200Cross('bullish')}>
+                        <Text style={[styles.segmentedText, ema50200Cross === 'bullish' && styles.segmentedTextActive]}>Golden Cross (Yukarı)</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, ema50200Cross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setEma50200Cross('bearish')}>
+                        <Text style={[styles.segmentedText, ema50200Cross === 'bearish' && styles.segmentedTextActive]}>Death Cross (Aşağı)</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
 
-              <View style={[styles.switchRow, { marginTop: 14 }]}>
-                <Text style={styles.switchLabel}>📍 Fiyat &gt; EMA 50 (Trend)</Text>
-                <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
+              {/* 4. EMA 20 / 50 CROSS */}
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>🔀 EMA 20/50 Cross</Text>
+                  <Switch value={useEma2050} onValueChange={setUseEma2050} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+                {useEma2050 && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={styles.subLabel}>Kesişim Yönü</Text>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity style={[styles.segmentedBtn, ema2050Cross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setEma2050Cross('bullish')}>
+                        <Text style={[styles.segmentedText, ema2050Cross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.segmentedBtn, ema2050Cross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setEma2050Cross('bearish')}>
+                        <Text style={[styles.segmentedText, ema2050Cross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
+
+              {/* 5. FİYAT / EMA KONUMU (MODAL İLE DÜZENLİ SEÇİM) */}
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
+                  <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+                {useEmaPrice && (
+                  <TouchableOpacity style={styles.selectDropdownBtn} onPress={() => setShowEmaPriceModal(true)}>
+                    <Text style={styles.selectDropdownText}>{selectedEmaLabel}</Text>
+                    <Text style={{ color: '#818cf8', fontSize: 12 }}>▼ Değiştir</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+
             </View>
 
             <TouchableOpacity style={styles.submitBtn} onPress={runBacktest} disabled={loading}>
@@ -346,7 +493,6 @@ export default function App() {
         {activeTab === 'ai' && (
           <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
             <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 ETKİLEŞİMLİ AI STRATEJİ DANIŞMANI</Text>
-
             <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 12 }}>
               Stratejinizi daha kârlı hale getirmek için yapay zekadan anında öneriler alın:
             </Text>
@@ -418,6 +564,34 @@ export default function App() {
         )}
       </ScrollView>
 
+      {/* EMA FİYAT KONUMU SEÇİM MODALI */}
+      <Modal visible={showEmaPriceModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#6366f1' }]}>
+            <Text style={styles.modalTitle}>📍 Fiyat / EMA Konumu Seçin</Text>
+            <ScrollView style={{ maxHeight: 300, marginVertical: 10 }}>
+              {emaPriceOptions.map(item => (
+                <TouchableOpacity
+                  key={item.value}
+                  style={[styles.modalOptionBtn, emaPriceFilter === item.value && styles.modalOptionBtnActive]}
+                  onPress={() => {
+                    setEmaPriceFilter(item.value);
+                    setShowEmaPriceModal(false);
+                  }}
+                >
+                  <Text style={[styles.modalOptionText, emaPriceFilter === item.value && styles.modalOptionTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowEmaPriceModal(false)}>
+              <Text style={styles.closeBtnText}>Kapat</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* OTOMATİK GÜNCELLEME İNDİRME MODALI */}
       {updateInfo && (
         <Modal visible={showUpdateModal} transparent animationType="fade">
@@ -425,10 +599,8 @@ export default function App() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>🚀 Yeni Güncelleme Mevcut!</Text>
               <Text style={styles.modalSub}>Sürüm: {updateInfo.latestVersion} (Mevcut: v{CURRENT_APP_VERSION})</Text>
-
               <Text style={styles.modalNotesTitle}>Neler Yeni?</Text>
               <Text style={styles.modalNotes}>{updateInfo.releaseNotes}</Text>
-
               <TouchableOpacity
                 style={styles.downloadBtn}
                 onPress={() => {
@@ -438,7 +610,6 @@ export default function App() {
               >
                 <Text style={styles.downloadBtnText}>📲 Güncellemeyi İndir &amp; Yükle</Text>
               </TouchableOpacity>
-
               <TouchableOpacity style={styles.closeBtn} onPress={() => setShowUpdateModal(false)}>
                 <Text style={styles.closeBtnText}>Daha Sonra</Text>
               </TouchableOpacity>
@@ -480,16 +651,21 @@ const styles = StyleSheet.create({
   scrollContent: { flex: 1, padding: 12 },
   sectionCard: { backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '700', marginBottom: 12 },
-  inputRow: { flexDirection: 'row', gap: 10, marginBottom: 10 },
+  inputRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   inputCol: { flex: 1 },
   inputLabel: { color: '#9ca3af', fontSize: 11, marginBottom: 4 },
+  subLabel: { color: '#6b7280', fontSize: 10, fontWeight: '600', marginBottom: 4 },
   input: { backgroundColor: '#1f2937', color: '#fff', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   switchLabel: { color: '#e5e7eb', fontSize: 13, fontWeight: '600' },
-  chipRow: { flexDirection: 'row', gap: 6 },
-  miniChip: { backgroundColor: '#374151', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 },
-  activeMiniChip: { backgroundColor: '#6366f1' },
-  chipText: { color: '#fff', fontSize: 11 },
+  criterionBox: { backgroundColor: 'rgba(0,0,0,0.25)', padding: 12, borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  segmentedContainer: { flexDirection: 'row', backgroundColor: '#111827', borderRadius: 8, padding: 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  segmentedBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRadius: 6 },
+  segmentedBtnActive: { backgroundColor: '#6366f1' },
+  segmentedText: { color: '#9ca3af', fontSize: 11, fontWeight: '500' },
+  segmentedTextActive: { color: '#ffffff', fontWeight: '700' },
+  selectDropdownBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1f2937', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
+  selectDropdownText: { color: '#f3f4f6', fontSize: 12, fontWeight: '600' },
   submitBtn: { backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   progressBox: { marginTop: 12, backgroundColor: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 8 },
@@ -516,12 +692,16 @@ const styles = StyleSheet.create({
   tradeSubInfo: { color: '#6b7280', fontSize: 11, marginTop: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: '#111827', width: '100%', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#a855f7' },
-  modalTitle: { color: '#f3f4f6', fontSize: 18, fontWeight: '700', marginBottom: 4 },
+  modalTitle: { color: '#f3f4f6', fontSize: 16, fontWeight: '700', marginBottom: 4 },
   modalSub: { color: '#9ca3af', fontSize: 12, marginBottom: 14 },
   modalNotesTitle: { color: '#c084fc', fontSize: 13, fontWeight: '600', marginBottom: 4 },
   modalNotes: { color: '#e5e7eb', fontSize: 12, marginBottom: 20, lineHeight: 18 },
+  modalOptionBtn: { padding: 12, borderRadius: 8, backgroundColor: '#1f2937', marginBottom: 6 },
+  modalOptionBtnActive: { backgroundColor: '#6366f1' },
+  modalOptionText: { color: '#9ca3af', fontSize: 13 },
+  modalOptionTextActive: { color: '#ffffff', fontWeight: '700' },
   downloadBtn: { backgroundColor: '#a855f7', paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
   downloadBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
-  closeBtn: { paddingVertical: 8, alignItems: 'center' },
+  closeBtn: { paddingVertical: 8, alignItems: 'center', marginTop: 6 },
   closeBtnText: { color: '#9ca3af', fontSize: 13 }
 });
