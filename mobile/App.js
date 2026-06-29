@@ -21,7 +21,12 @@ import {
 } from './services/UpdateService';
 
 export default function App() {
+  // Aktif Ekran / Modül Yönetimi ('home', 'backtest_module', 'live_module')
+  const [currentModule, setCurrentModule] = useState('home');
+  
+  // Backtest Modülü İçinde Tab Yönetimi ('strategy', 'ai', 'history')
   const [activeTab, setActiveTab] = useState('strategy');
+  
   const [loading, setLoading] = useState(false);
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
@@ -30,6 +35,13 @@ export default function App() {
   const [serverUrl, setServerUrl] = useState('https://trading-bot-33es.onrender.com');
   const [tempServerUrl, setTempServerUrl] = useState('https://trading-bot-33es.onrender.com');
   const [showServerModal, setShowServerModal] = useState(false);
+
+  // Canlı Piyasa Top 5 Kripto Para Verileri
+  const [top5Tickers, setTop5Tickers] = useState([]);
+  const [loadingTickers, setLoadingTickers] = useState(false);
+
+  // Canlı İşlem Bot Durumu
+  const [isBotActive, setIsBotActive] = useState(false);
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -97,7 +109,22 @@ export default function App() {
   useEffect(() => {
     preventVersionConflicts();
     checkUpdates();
+    fetchTop5Tickers();
   }, []);
+
+  const fetchTop5Tickers = async () => {
+    setLoadingTickers(true);
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      const response = await fetch(`${cleanServerUrl}/ticker/top5`);
+      const data = await response.json();
+      setTop5Tickers(data);
+    } catch (e) {
+      console.log("Top 5 ticker hatası:", e);
+    } finally {
+      setLoadingTickers(false);
+    }
+  };
 
   const checkUpdates = async () => {
     const info = await checkForAppUpdates();
@@ -189,6 +216,7 @@ export default function App() {
     setServerUrl(tempServerUrl);
     setShowServerModal(false);
     Alert.alert('Sunucu Güncellendi', `Yeni sunucu adresi kaydedildi:\n${tempServerUrl}`);
+    fetchTop5Tickers();
   };
 
   const pnlNet = backtestResult.final_balance - backtestResult.initial_balance;
@@ -198,7 +226,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* FERAH VE HİZALANMIŞ ÜST BAŞLIK */}
+      {/* ÜST BAŞLIK & SUNUCU ROZETLERİ */}
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <View style={styles.logoIcon}>
@@ -234,378 +262,421 @@ export default function App() {
         </TouchableOpacity>
       )}
 
-      {/* ÖZET İSTATİSTİK KARTLARI GRİD */}
-      <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>KASA BAKİYESİ</Text>
-          <Text style={styles.statValue}>${backtestResult.final_balance.toFixed(2)}</Text>
-          <Text style={[styles.statSub, pnlNet >= 0 ? styles.textGreen : styles.textRed]}>
-            {pnlNet >= 0 ? '+' : ''}${pnlNet.toFixed(2)} (%{backtestResult.total_return_pct})
-          </Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>WIN RATE</Text>
-          <Text style={[styles.statValue, { color: '#6366f1' }]}>%{backtestResult.win_rate}</Text>
-          <Text style={styles.statSub}>{backtestResult.total_trades} İşlem</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>MAX DRAWDOWN</Text>
-          <Text style={[styles.statValue, styles.textRed]}>%{backtestResult.max_drawdown_pct}</Text>
-          <Text style={styles.statSub}>Sermaye Riski</Text>
-        </View>
-      </View>
-
-      {/* TAB NAVİGASYON BUTONLARI */}
-      <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'strategy' && styles.activeTabButton]}
-          onPress={() => setActiveTab('strategy')}
-        >
-          <Text style={[styles.tabText, activeTab === 'strategy' && styles.activeTabText]}>⚙️ Strateji</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'ai' && styles.activeTabButton]}
-          onPress={() => setActiveTab('ai')}
-        >
-          <Text style={[styles.tabText, activeTab === 'ai' && styles.activeTabText]}>🤖 AI Danışman</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tabButton, activeTab === 'history' && styles.activeTabButton]}
-          onPress={() => setActiveTab('history')}
-        >
-          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>📋 Geçmiş ({backtestResult.total_trades})</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
-        {/* SECENEK 1: STRATEJİ & TEST FORMU */}
-        {activeTab === 'strategy' && (
-          <View>
-            {/* PARİTE & TARİH FİLTRESİ KARTI */}
-            <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#f59e0b' }]}>📅 Parite & Tarih Filtresi</Text>
-              
-              <View style={styles.inputRow}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Sembol</Text>
-                  <View style={styles.segmentedContainer}>
-                    {['BTCUSDT', 'ETHUSDT', 'SOLUSDT'].map((s) => (
-                      <TouchableOpacity
-                        key={s}
-                        style={[styles.segmentedBtn, symbol === s && styles.segmentedBtnActive]}
-                        onPress={() => setSymbol(s)}
-                      >
-                        <Text style={[styles.segmentedText, symbol === s && styles.segmentedTextActive]}>{s.replace('USDT', '')}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Zaman Dilimi</Text>
-                  <View style={styles.segmentedContainer}>
-                    {['15m', '1h', '4h', '1d'].map((tf) => (
-                      <TouchableOpacity
-                        key={tf}
-                        style={[styles.segmentedBtn, interval === tf && styles.segmentedBtnActive]}
-                        onPress={() => setInterval(tf)}
-                      >
-                        <Text style={[styles.segmentedText, interval === tf && styles.segmentedTextActive]}>{tf}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </View>
-
-              {/* SADE VE TEMİZ YYYY-AA-GG TARİH GİRDİ ALANLARI */}
-              <View style={[styles.inputRow, { marginTop: 8 }]}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={startDate}
-                    onChangeText={setStartDate}
-                    placeholder="YYYY-AA-GG"
-                    placeholderTextColor="#6b7280"
-                  />
-                </View>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Bitiş Tarihi</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={endDate}
-                    onChangeText={setEndDate}
-                    placeholder="YYYY-AA-GG"
-                    placeholderTextColor="#6b7280"
-                  />
-                </View>
-              </View>
-            </View>
-
-            {/* PORTFÖY & RİSK YÖNETİMİ */}
-            <View style={styles.sectionCard}>
-              <Text style={styles.cardTitle}>💰 Portföy & Risk Yönetimi</Text>
-              <View style={styles.inputRow}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Başlangıç ($)</Text>
-                  <TextInput style={styles.input} value={balance} onChangeText={setBalance} keyboardType="numeric" />
-                </View>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>İşlem Başı (%)</Text>
-                  <TextInput style={styles.input} value={posPct} onChangeText={setPosPct} keyboardType="numeric" />
-                </View>
-              </View>
-
-              <View style={styles.inputRow}>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Stop Loss (%)</Text>
-                  <TextInput style={styles.input} value={slPct} onChangeText={setSlPct} keyboardType="numeric" />
-                </View>
-                <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Take Profit (%)</Text>
-                  <TextInput style={styles.input} value={tpPct} onChangeText={setTpPct} keyboardType="numeric" />
-                </View>
-              </View>
-
-              <View style={{ marginTop: 6 }}>
-                <Text style={styles.inputLabel}>Max Eşzamanlı Pozisyon Sayısı</Text>
-                <TextInput style={styles.input} value={maxPos} onChangeText={setMaxPos} keyboardType="numeric" />
-              </View>
-            </View>
-
-            {/* STRATEJİ KRİTERLERİ PANELİ */}
-            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
-              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
-
-              {/* 1. RSI KRİTERİ */}
-              <View style={styles.criterionBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
-                  <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                </View>
-                {useRsi && (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={styles.subLabel}>RSI Şartı Operatörü</Text>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'less' && styles.segmentedBtnActive]} onPress={() => setRsiOp('less')}>
-                        <Text style={[styles.segmentedText, rsiOp === 'less' && styles.segmentedTextActive]}>Küçük (&lt;)</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'greater' && styles.segmentedBtnActive]} onPress={() => setRsiOp('greater')}>
-                        <Text style={[styles.segmentedText, rsiOp === 'greater' && styles.segmentedTextActive]}>Büyük (&gt;)</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'between' && styles.segmentedBtnActive]} onPress={() => setRsiOp('between')}>
-                        <Text style={[styles.segmentedText, rsiOp === 'between' && styles.segmentedTextActive]}>Arasında</Text>
-                      </TouchableOpacity>
-                    </View>
-                    <View style={[styles.inputRow, { marginTop: 8 }]}>
-                      <View style={styles.inputCol}>
-                        <Text style={styles.inputLabel}>{rsiOp === 'between' ? 'Alt Eşik' : 'Eşik Değeri'}</Text>
-                        <TextInput style={styles.input} value={rsiVal1} onChangeText={setRsiVal1} keyboardType="numeric" />
-                      </View>
-                      {rsiOp === 'between' && (
-                        <View style={styles.inputCol}>
-                          <Text style={styles.inputLabel}>Üst Eşik</Text>
-                          <TextInput style={styles.input} value={rsiVal2} onChangeText={setRsiVal2} keyboardType="numeric" />
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* 2. MACD KRİTERİ */}
-              <View style={styles.criterionBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
-                  <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                </View>
-                {useMacd && (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={styles.subLabel}>Kesişim Yönü</Text>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bullish')}>
-                        <Text style={[styles.segmentedText, macdCross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bearish')}>
-                        <Text style={[styles.segmentedText, macdCross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdCross('any')}>
-                        <Text style={[styles.segmentedText, macdCross === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <Text style={[styles.subLabel, { marginTop: 8 }]}>0 Çizgisi Konumu</Text>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdZero('any')}>
-                        <Text style={[styles.segmentedText, macdZero === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'below_zero' && styles.segmentedBtnActive]} onPress={() => setMacdZero('below_zero')}>
-                        <Text style={[styles.segmentedText, macdZero === 'below_zero' && styles.segmentedTextActive]}>0 Altında</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, macdZero === 'above_zero' && styles.segmentedBtnActive]} onPress={() => setMacdZero('above_zero')}>
-                        <Text style={[styles.segmentedText, macdZero === 'above_zero' && styles.segmentedTextActive]}>0 Üstünde</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* 3. EMA 50 / 200 CROSS */}
-              <View style={styles.criterionBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>🔀 EMA 50/200 Cross</Text>
-                  <Switch value={useEma50200} onValueChange={setUseEma50200} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                </View>
-                {useEma50200 && (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={styles.subLabel}>Golden / Death Cross</Text>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity style={[styles.segmentedBtn, ema50200Cross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setEma50200Cross('bullish')}>
-                        <Text style={[styles.segmentedText, ema50200Cross === 'bullish' && styles.segmentedTextActive]}>Golden Cross (Yukarı)</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, ema50200Cross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setEma50200Cross('bearish')}>
-                        <Text style={[styles.segmentedText, ema50200Cross === 'bearish' && styles.segmentedTextActive]}>Death Cross (Aşağı)</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* 4. EMA 20 / 50 CROSS */}
-              <View style={styles.criterionBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>🔀 EMA 20/50 Cross</Text>
-                  <Switch value={useEma2050} onValueChange={setUseEma2050} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                </View>
-                {useEma2050 && (
-                  <View style={{ marginTop: 8 }}>
-                    <Text style={styles.subLabel}>Kesişim Yönü</Text>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity style={[styles.segmentedBtn, ema2050Cross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setEma2050Cross('bullish')}>
-                        <Text style={[styles.segmentedText, ema2050Cross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.segmentedBtn, ema2050Cross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setEma2050Cross('bearish')}>
-                        <Text style={[styles.segmentedText, ema2050Cross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              {/* 5. FİYAT / EMA KONUMU */}
-              <View style={styles.criterionBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
-                  <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                </View>
-                {useEmaPrice && (
-                  <TouchableOpacity style={styles.selectDropdownBtn} onPress={() => setShowEmaPriceModal(true)}>
-                    <Text style={styles.selectDropdownText}>{selectedEmaLabel}</Text>
-                    <Text style={{ color: '#818cf8', fontSize: 12 }}>▼ Değiştir</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-
-            </View>
-
-            {loading && (
-              <View style={styles.progressBox}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressStatus}>{progressStatus}</Text>
-                  <Text style={styles.progressPct}>%{progressPct}</Text>
-                </View>
-                <View style={styles.progressBarTrack}>
-                  <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
-                </View>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* SECENEK 2: ETKİLEŞİMLİ VERİ ODAKLI AI DANIŞMANI */}
-        {activeTab === 'ai' && (
-          <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
-            <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 DERİN KANTİTATİF AI STRATEJİ DANIŞMANI</Text>
-            <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
-              Stratejinizi matematiksel beklenti (Expected Value) ve veri odaklı metriklerle iyileştirin:
-            </Text>
-
-            <View style={styles.chipCloud}>
-              <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Derin strateji iyileştirme reçetesi hazırla')}>
-                <Text style={styles.actionChipText}>⚡ Derin İyileştirme Reçetesi</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Win Rate nasıl artırılır?')}>
-                <Text style={styles.actionChipText}>📊 Win Rate Optimizasyonu</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Max Drawdown ve riski düşür')}>
-                <Text style={styles.actionChipText}>🛡️ Risk &amp; Drawdown Telemetrisi</Text>
+      {/* MODÜL 1: ANA EKRAN (HOME DASHBOARD & İLK 5 KRİPTO) */}
+      {currentModule === 'home' && (
+        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* İLK 5 KRİPTO CANLI FİYAT VERİSİ DOĞRULAMA KARTI */}
+          <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.cardTitle, { color: '#10b981', margin: 0 }]}>📈 Canlı Fiyat Doğrulama (İlk 5 Kripto)</Text>
+              <TouchableOpacity onPress={fetchTop5Tickers} disabled={loadingTickers}>
+                <Text style={{ color: '#818cf8', fontSize: 12, fontWeight: '600' }}>
+                  {loadingTickers ? '⏳ Yenileniyor...' : '🔄 Yenile'}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {backtestResult.ai_advice && backtestResult.ai_advice.map((advice, index) => (
-              <View key={index} style={styles.adviceBox}>
-                <Text style={styles.adviceText}>{advice.replace(/\*\*/g, '')}</Text>
-              </View>
-            ))}
-
-            <View style={{ marginTop: 16 }}>
-              <TextInput
-                style={[styles.input, { height: 45, marginBottom: 10 }]}
-                placeholder="Yapay Zekaya soru sorun..."
-                placeholderTextColor="#6b7280"
-                value={aiQuery}
-                onChangeText={setAiQuery}
-              />
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#a855f7' }]} onPress={() => askAIConsult(aiQuery)}>
-                <Text style={styles.submitBtnText}>💬 Veri Odaklı AI Danışmana Sor</Text>
-              </TouchableOpacity>
-            </View>
-
-            {aiResponse ? (
-              <View style={styles.aiResultCard}>
-                {aiLoading ? <ActivityIndicator color="#c084fc" /> : <Text style={styles.aiResultText}>{aiResponse.replace(/\*\*/g, '')}</Text>}
-              </View>
-            ) : null}
-          </View>
-        )}
-
-        {/* SECENEK 3: İŞLEM GEÇMİŞİ LİSTESİ */}
-        {activeTab === 'history' && (
-          <View style={styles.sectionCard}>
-            <Text style={styles.cardTitle}>📋 Geçmiş İşlem Kayıtları</Text>
-            {backtestResult.trades && backtestResult.trades.length > 0 ? (
-              backtestResult.trades.slice().reverse().map((trade, index) => (
-                <View key={index} style={styles.tradeItem}>
-                  <View style={styles.tradeRow}>
-                    <View style={[styles.sideBadge, trade.side === 'BUY' ? styles.badgeBuy : styles.badgeSell]}>
-                      <Text style={styles.badgeText}>{trade.side}</Text>
-                    </View>
-                    <Text style={styles.tradeDate}>{trade.entry_time ? trade.entry_time.replace('T', ' ').substring(0, 16) : 'N/A'}</Text>
-                    <Text style={[styles.tradePnl, trade.pnl >= 0 ? styles.textGreen : styles.textRed]}>
-                      {trade.pnl >= 0 ? '+' : ''}${trade.pnl} (%{trade.pnl_pct})
+            {top5Tickers && top5Tickers.length > 0 ? (
+              top5Tickers.map((item, idx) => (
+                <View key={idx} style={styles.tickerRow}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.tickerSymbol}>{item.symbol}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.tickerPrice}>${item.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}</Text>
+                    <Text style={[styles.tickerChange, item.change_pct >= 0 ? styles.textGreen : styles.textRed]}>
+                      {item.change_pct >= 0 ? '+' : ''}{item.change_pct}%
                     </Text>
                   </View>
-                  <Text style={styles.tradeSubInfo}>
-                    Giriş: ${trade.entry_price.toFixed(2)} | Çıkış: ${trade.exit_price.toFixed(2)} ({trade.exit_reason})
-                  </Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>⚠️ Henüz gerçekleşmiş bir işlem bulunmuyor.</Text>
+              <ActivityIndicator color="#10b981" style={{ padding: 15 }} />
             )}
           </View>
-        )}
-      </ScrollView>
 
-      {/* ERGONOMİK SABİT ALT AKSİYON BARI (STRATEJİYİ TEST ET BUTONU HER ZAMAN PARMAĞINIZIN ALTINDA) */}
-      {activeTab === 'strategy' && (
-        <View style={styles.stickyBottomBar}>
-          <TouchableOpacity style={styles.stickySubmitBtn} onPress={runBacktest} disabled={loading}>
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.stickySubmitBtnText}>🚀 STRATEJİYİ TEST ET</Text>
-            )}
+          {/* İKİ ANA MODÜL SEÇİM KARTLARI */}
+          <Text style={{ color: '#f3f4f6', fontSize: 16, fontWeight: '700', marginVertical: 10, paddingLeft: 4 }}>
+            🎯 Uygulama Modülleri
+          </Text>
+
+          {/* MODÜL 1: BACKTEST MODÜLÜ KARTI */}
+          <TouchableOpacity style={styles.moduleCard} onPress={() => setCurrentModule('backtest_module')}>
+            <View style={styles.moduleCardHeader}>
+              <View style={[styles.moduleIconBox, { backgroundColor: '#6366f1' }]}>
+                <Text style={{ fontSize: 24 }}>📊</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moduleTitle}>Backtest &amp; Strateji Simülatörü</Text>
+                <Text style={styles.moduleSubTitle}>Gelişmiş kural setleri, indikatör testleri ve yapay zeka danışmanı</Text>
+              </View>
+            </View>
+            <View style={styles.moduleCardFooter}>
+              <Text style={{ color: '#818cf8', fontSize: 13, fontWeight: '700' }}>🚀 Modüle Git ve Stratejiyi İncele →</Text>
+            </View>
           </TouchableOpacity>
+
+          {/* MODÜL 2: CANLI İŞLEM MODÜLÜ KARTI */}
+          <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]} onPress={() => setCurrentModule('live_module')}>
+            <View style={styles.moduleCardHeader}>
+              <View style={[styles.moduleIconBox, { backgroundColor: '#f59e0b' }]}>
+                <Text style={{ fontSize: 24 }}>⚡</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.moduleTitle}>Canlı Otomatik İşlem Modülü</Text>
+                <Text style={styles.moduleSubTitle}>7/24 Binance alım-satım botu, canlı sinyal tarayıcı ve pozisyon takibi</Text>
+              </View>
+            </View>
+            <View style={styles.moduleCardFooter}>
+              <Text style={{ color: '#f59e0b', fontSize: 13, fontWeight: '700' }}>⚡ Canlı Moda Geç ve Botu Yönet →</Text>
+            </View>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* MODÜL 2: BACKTEST MODÜLÜ DETAY SAYFASI */}
+      {currentModule === 'backtest_module' && (
+        <View style={{ flex: 1 }}>
+          {/* GERİ DÖNÜŞ VE TAB BAR */}
+          <View style={styles.moduleNavHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
+              <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#f3f4f6', fontSize: 14, fontWeight: '700' }}>📊 Backtest Modülü</Text>
+          </View>
+
+          {/* ÖZET İSTATİSTİK KARTLARI GRİD */}
+          <View style={styles.statsGrid}>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>KASA BAKİYESİ</Text>
+              <Text style={styles.statValue}>${backtestResult.final_balance.toFixed(2)}</Text>
+              <Text style={[styles.statSub, pnlNet >= 0 ? styles.textGreen : styles.textRed]}>
+                {pnlNet >= 0 ? '+' : ''}${pnlNet.toFixed(2)} (%{backtestResult.total_return_pct})
+              </Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>WIN RATE</Text>
+              <Text style={[styles.statValue, { color: '#6366f1' }]}>%{backtestResult.win_rate}</Text>
+              <Text style={styles.statSub}>{backtestResult.total_trades} İşlem</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Text style={styles.statLabel}>MAX DRAWDOWN</Text>
+              <Text style={[styles.statValue, styles.textRed]}>%{backtestResult.max_drawdown_pct}</Text>
+              <Text style={styles.statSub}>Sermaye Riski</Text>
+            </View>
+          </View>
+
+          {/* TAB NAVİGASYON BUTONLARI */}
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'strategy' && styles.activeTabButton]}
+              onPress={() => setActiveTab('strategy')}
+            >
+              <Text style={[styles.tabText, activeTab === 'strategy' && styles.activeTabText]}>⚙️ Strateji</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'ai' && styles.activeTabButton]}
+              onPress={() => setActiveTab('ai')}
+            >
+              <Text style={[styles.tabText, activeTab === 'ai' && styles.activeTabText]}>🤖 AI Danışman</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === 'history' && styles.activeTabButton]}
+              onPress={() => setActiveTab('history')}
+            >
+              <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>📋 Geçmiş ({backtestResult.total_trades})</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 90 }}>
+            {activeTab === 'strategy' && (
+              <View>
+                {/* PARİTE & TARİH FİLTRESİ KARTI */}
+                <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
+                  <Text style={[styles.cardTitle, { color: '#f59e0b' }]}>📅 Parite &amp; Tarih Filtresi</Text>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Sembol</Text>
+                      <View style={styles.segmentedContainer}>
+                        {['BTCUSDT', 'ETHUSDT', 'SOLUSDT'].map((s) => (
+                          <TouchableOpacity
+                            key={s}
+                            style={[styles.segmentedBtn, symbol === s && styles.segmentedBtnActive]}
+                            onPress={() => setSymbol(s)}
+                          >
+                            <Text style={[styles.segmentedText, symbol === s && styles.segmentedTextActive]}>{s.replace('USDT', '')}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Zaman Dilimi</Text>
+                      <View style={styles.segmentedContainer}>
+                        {['15m', '1h', '4h', '1d'].map((tf) => (
+                          <TouchableOpacity
+                            key={tf}
+                            style={[styles.segmentedBtn, interval === tf && styles.segmentedBtnActive]}
+                            onPress={() => setInterval(tf)}
+                          >
+                            <Text style={[styles.segmentedText, interval === tf && styles.segmentedTextActive]}>{tf}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={[styles.inputRow, { marginTop: 8 }]}>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={startDate}
+                        onChangeText={setStartDate}
+                        placeholder="YYYY-AA-GG"
+                        placeholderTextColor="#6b7280"
+                      />
+                    </View>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Bitiş Tarihi</Text>
+                      <TextInput
+                        style={styles.input}
+                        value={endDate}
+                        onChangeText={setEndDate}
+                        placeholder="YYYY-AA-GG"
+                        placeholderTextColor="#6b7280"
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                {/* PORTFÖY & RİSK YÖNETİMİ */}
+                <View style={styles.sectionCard}>
+                  <Text style={styles.cardTitle}>💰 Portföy &amp; Risk Yönetimi</Text>
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Başlangıç ($)</Text>
+                      <TextInput style={styles.input} value={balance} onChangeText={setBalance} keyboardType="numeric" />
+                    </View>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>İşlem Başı (%)</Text>
+                      <TextInput style={styles.input} value={posPct} onChangeText={setPosPct} keyboardType="numeric" />
+                    </View>
+                  </View>
+
+                  <View style={styles.inputRow}>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Stop Loss (%)</Text>
+                      <TextInput style={styles.input} value={slPct} onChangeText={setSlPct} keyboardType="numeric" />
+                    </View>
+                    <View style={styles.inputCol}>
+                      <Text style={styles.inputLabel}>Take Profit (%)</Text>
+                      <TextInput style={styles.input} value={tpPct} onChangeText={setTpPct} keyboardType="numeric" />
+                    </View>
+                  </View>
+
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.inputLabel}>Max Eşzamanlı Pozisyon Sayısı</Text>
+                    <TextInput style={styles.input} value={maxPos} onChangeText={setMaxPos} keyboardType="numeric" />
+                  </View>
+                </View>
+
+                {/* STRATEJİ KRİTERLERİ PANELİ */}
+                <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
+                  <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
+                  
+                  {/* RSI */}
+                  <View style={styles.criterionBox}>
+                    <View style={styles.switchRow}>
+                      <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
+                      <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                    </View>
+                    {useRsi && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={styles.subLabel}>RSI Şartı Operatörü</Text>
+                        <View style={styles.segmentedContainer}>
+                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'less' && styles.segmentedBtnActive]} onPress={() => setRsiOp('less')}>
+                            <Text style={[styles.segmentedText, rsiOp === 'less' && styles.segmentedTextActive]}>Küçük (&lt;)</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'greater' && styles.segmentedBtnActive]} onPress={() => setRsiOp('greater')}>
+                            <Text style={[styles.segmentedText, rsiOp === 'greater' && styles.segmentedTextActive]}>Büyük (&gt;)</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.segmentedBtn, rsiOp === 'between' && styles.segmentedBtnActive]} onPress={() => setRsiOp('between')}>
+                            <Text style={[styles.segmentedText, rsiOp === 'between' && styles.segmentedTextActive]}>Arasında</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={[styles.inputRow, { marginTop: 8 }]}>
+                          <View style={styles.inputCol}>
+                            <Text style={styles.inputLabel}>{rsiOp === 'between' ? 'Alt Eşik' : 'Eşik Değeri'}</Text>
+                            <TextInput style={styles.input} value={rsiVal1} onChangeText={setRsiVal1} keyboardType="numeric" />
+                          </View>
+                          {rsiOp === 'between' && (
+                            <View style={styles.inputCol}>
+                              <Text style={styles.inputLabel}>Üst Eşik</Text>
+                              <TextInput style={styles.input} value={rsiVal2} onChangeText={setRsiVal2} keyboardType="numeric" />
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* MACD */}
+                  <View style={styles.criterionBox}>
+                    <View style={styles.switchRow}>
+                      <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
+                      <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                    </View>
+                    {useMacd && (
+                      <View style={{ marginTop: 8 }}>
+                        <Text style={styles.subLabel}>Kesişim Yönü</Text>
+                        <View style={styles.segmentedContainer}>
+                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bullish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bullish')}>
+                            <Text style={[styles.segmentedText, macdCross === 'bullish' && styles.segmentedTextActive]}>Yukarı Kesişim</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'bearish' && styles.segmentedBtnActive]} onPress={() => setMacdCross('bearish')}>
+                            <Text style={[styles.segmentedText, macdCross === 'bearish' && styles.segmentedTextActive]}>Aşağı Kesişim</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[styles.segmentedBtn, macdCross === 'any' && styles.segmentedBtnActive]} onPress={() => setMacdCross('any')}>
+                            <Text style={[styles.segmentedText, macdCross === 'any' && styles.segmentedTextActive]}>Fark Etmez</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+
+                  {/* EMA Price */}
+                  <View style={styles.criterionBox}>
+                    <View style={styles.switchRow}>
+                      <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
+                      <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                    </View>
+                    {useEmaPrice && (
+                      <TouchableOpacity style={styles.selectDropdownBtn} onPress={() => setShowEmaPriceModal(true)}>
+                        <Text style={styles.selectDropdownText}>{selectedEmaLabel}</Text>
+                        <Text style={{ color: '#818cf8', fontSize: 12 }}>▼ Değiştir</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+                {loading && (
+                  <View style={styles.progressBox}>
+                    <View style={styles.progressHeader}>
+                      <Text style={styles.progressStatus}>{progressStatus}</Text>
+                      <Text style={styles.progressPct}>%{progressPct}</Text>
+                    </View>
+                    <View style={styles.progressBarTrack}>
+                      <View style={[styles.progressBarFill, { width: `${progressPct}%` }]} />
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {activeTab === 'ai' && (
+              <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
+                <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 DERİN KANTİTATİF AI STRATEJİ DANIŞMANI</Text>
+                <View style={styles.chipCloud}>
+                  <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Derin strateji iyileştirme reçetesi hazırla')}>
+                    <Text style={styles.actionChipText}>⚡ Derin İyileştirme Reçetesi</Text>
+                  </TouchableOpacity>
+                </View>
+                {backtestResult.ai_advice && backtestResult.ai_advice.map((advice, index) => (
+                  <View key={index} style={styles.adviceBox}>
+                    <Text style={styles.adviceText}>{advice.replace(/\*\*/g, '')}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {activeTab === 'history' && (
+              <View style={styles.sectionCard}>
+                <Text style={styles.cardTitle}>📋 Geçmiş İşlem Kayıtları</Text>
+                {backtestResult.trades && backtestResult.trades.length > 0 ? (
+                  backtestResult.trades.slice().reverse().map((trade, index) => (
+                    <View key={index} style={styles.tradeItem}>
+                      <View style={styles.tradeRow}>
+                        <View style={[styles.sideBadge, trade.side === 'BUY' ? styles.badgeBuy : styles.badgeSell]}>
+                          <Text style={styles.badgeText}>{trade.side}</Text>
+                        </View>
+                        <Text style={styles.tradeDate}>{trade.entry_time ? trade.entry_time.replace('T', ' ').substring(0, 16) : 'N/A'}</Text>
+                        <Text style={[styles.tradePnl, trade.pnl >= 0 ? styles.textGreen : styles.textRed]}>
+                          {trade.pnl >= 0 ? '+' : ''}${trade.pnl} (%{trade.pnl_pct})
+                        </Text>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>⚠️ Henüz gerçekleşmiş bir işlem bulunmuyor.</Text>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          {activeTab === 'strategy' && (
+            <View style={styles.stickyBottomBar}>
+              <TouchableOpacity style={styles.stickySubmitBtn} onPress={runBacktest} disabled={loading}>
+                {loading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.stickySubmitBtnText}>🚀 STRATEJİYİ TEST ET</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      )}
+
+      {/* MODÜL 3: CANLI İŞLEM MODÜLÜ DETAY SAYFASI */}
+      {currentModule === 'live_module' && (
+        <View style={{ flex: 1 }}>
+          <View style={styles.moduleNavHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
+              <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#f59e0b', fontSize: 14, fontWeight: '700' }}>⚡ Canlı İşlem Modülü</Text>
+          </View>
+
+          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* CANLI BOT DURUMU KARTI */}
+            <View style={[styles.sectionCard, { borderColor: isBotActive ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={styles.cardTitle}>🤖 7/24 Otomatik Bot Durumu</Text>
+                  <Text style={{ color: isBotActive ? '#10b981' : '#ef4444', fontWeight: '700', fontSize: 13 }}>
+                    {isBotActive ? '🟢 AKTİF - Binance Piyasasını Tarıyor' : '🔴 PASİF - Bot Durduruldu'}
+                  </Text>
+                </View>
+                <Switch
+                  value={isBotActive}
+                  onValueChange={(val) => {
+                    setIsBotActive(val);
+                    Alert.alert(val ? 'Bot Başlatıldı' : 'Bot Durduruldu', val ? '7/24 Canlı işlem taraması aktif edildi.' : 'Otomatik alım-satım durduruldu.');
+                  }}
+                  trackColor={{ false: '#374151', true: '#10b981' }}
+                />
+              </View>
+            </View>
+
+            {/* AÇIK CANLI POZİSYONLAR */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.cardTitle}>💼 Açık Canlı Pozisyonlar (0)</Text>
+              <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+                {isBotActive ? '⏳ Sinyal bekleniyor... Henüz açık pozisyon bulunmuyor.' : '⚠️ Bot pasif durumda. Canlı alım yapabilmek için üstteki botu aktif edin.'}
+              </Text>
+            </View>
+
+            {/* TELEGRAM BİLDİRİM LOGLARI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.3)' }]}>
+              <Text style={styles.cardTitle}>📲 Telegram Bildirim Geçmişi</Text>
+              <View style={styles.adviceBox}>
+                <Text style={styles.adviceText}>✅ [Sistem] Binance Testnet canlı websocket bağlantısı kuruldu.</Text>
+              </View>
+              <View style={styles.adviceBox}>
+                <Text style={styles.adviceText}>ℹ️ [Sinyal] BTCUSDT 1 Saatlik grafikte RSI < 35 şartı tarandı.</Text>
+              </View>
+            </View>
+          </ScrollView>
         </View>
       )}
 
@@ -709,6 +780,22 @@ const styles = StyleSheet.create({
   liveText: { color: '#10b981', fontSize: 11, fontWeight: '600' },
   updateNoticeBanner: { backgroundColor: '#a855f7', padding: 10, alignItems: 'center' },
   updateNoticeText: { color: '#ffffff', fontSize: 12, fontWeight: '700' },
+  scrollContent: { flex: 1, padding: 12 },
+  sectionCard: { backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '700', marginBottom: 12 },
+  tickerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)' },
+  tickerSymbol: { color: '#f3f4f6', fontSize: 13, fontWeight: '700' },
+  tickerPrice: { color: '#f3f4f6', fontSize: 13, fontWeight: '700' },
+  tickerChange: { fontSize: 11, fontWeight: '600' },
+  moduleCard: { backgroundColor: 'rgba(17,24,39,0.9)', borderRadius: 16, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' },
+  moduleCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  moduleIconBox: { width: 48, height: 48, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  moduleTitle: { color: '#ffffff', fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  moduleSubTitle: { color: '#9ca3af', fontSize: 11 },
+  moduleCardFooter: { marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.05)', alignItems: 'flex-end' },
+  moduleNavHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'rgba(17,24,39,0.8)', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
+  backBtn: { backgroundColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  backBtnText: { color: '#818cf8', fontSize: 12, fontWeight: '600' },
   statsGrid: { flexDirection: 'row', padding: 12, gap: 8 },
   statCard: { flex: 1, backgroundColor: 'rgba(17,24,39,0.85)', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   statLabel: { color: '#9ca3af', fontSize: 9, fontWeight: '700' },
@@ -721,9 +808,6 @@ const styles = StyleSheet.create({
   activeTabButton: { backgroundColor: '#6366f1' },
   tabText: { color: '#9ca3af', fontSize: 12, fontWeight: '600' },
   activeTabText: { color: '#ffffff' },
-  scrollContent: { flex: 1, padding: 12 },
-  sectionCard: { backgroundColor: 'rgba(17,24,39,0.85)', borderRadius: 14, padding: 16, marginBottom: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
-  cardTitle: { color: '#f3f4f6', fontSize: 15, fontWeight: '700', marginBottom: 12 },
   inputRow: { flexDirection: 'row', gap: 10, marginBottom: 8 },
   inputCol: { flex: 1 },
   inputLabel: { color: '#9ca3af', fontSize: 11, marginBottom: 4 },
@@ -755,8 +839,6 @@ const styles = StyleSheet.create({
   actionChipText: { color: '#c084fc', fontSize: 11, fontWeight: '600' },
   adviceBox: { backgroundColor: 'rgba(255,255,255,0.03)', borderLeftWidth: 3, borderLeftColor: '#a855f7', padding: 10, borderRadius: 4, marginBottom: 8 },
   adviceText: { color: '#e5e7eb', fontSize: 12, lineHeight: 17 },
-  aiResultCard: { marginTop: 12, backgroundColor: 'rgba(168, 85, 247, 0.12)', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.3)' },
-  aiResultText: { color: '#e9d5ff', fontSize: 12, lineHeight: 18 },
   tradeItem: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', paddingVertical: 10 },
   tradeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sideBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
