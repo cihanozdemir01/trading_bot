@@ -36,33 +36,34 @@ export default function App() {
   // Portföy & Risk Parametreleri
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [interval, setInterval] = useState('1h');
+  const [startDate, setStartDate] = useState('2024-01-01');
+  const [endDate, setEndDate] = useState('');
   const [balance, setBalance] = useState('1000');
   const [posPct, setPosPct] = useState('10');
   const [maxPos, setMaxPos] = useState('3');
   const [slPct, setSlPct] = useState('1.5');
   const [tpPct, setTpPct] = useState('3.0');
 
-  // WEBİLE %100 BİREBİR EŞLEŞEN TÜM STRATEJİ KRİTERLERİ STATE'LERİ
+  // STRATEJİ KRİTERLERİ STATE'LERİ
   const [useRsi, setUseRsi] = useState(true);
-  const [rsiOp, setRsiOp] = useState('less'); // 'less', 'greater', 'between'
+  const [rsiOp, setRsiOp] = useState('less');
   const [rsiVal1, setRsiVal1] = useState('35');
   const [rsiVal2, setRsiVal2] = useState('70');
 
   const [useMacd, setUseMacd] = useState(true);
-  const [macdCross, setMacdCross] = useState('bullish'); // 'bullish', 'bearish', 'any'
-  const [macdZero, setMacdZero] = useState('any'); // 'any', 'below_zero', 'above_zero'
+  const [macdCross, setMacdCross] = useState('bullish');
+  const [macdZero, setMacdZero] = useState('any');
 
   const [useEma50200, setUseEma50200] = useState(false);
-  const [ema50200Cross, setEma50200Cross] = useState('bullish'); // 'bullish', 'bearish'
+  const [ema50200Cross, setEma50200Cross] = useState('bullish');
 
   const [useEma2050, setUseEma2050] = useState(false);
-  const [ema2050Cross, setEma2050Cross] = useState('bullish'); // 'bullish', 'bearish'
+  const [ema2050Cross, setEma2050Cross] = useState('bullish');
 
   const [useEmaPrice, setUseEmaPrice] = useState(true);
   const [emaPriceFilter, setEmaPriceFilter] = useState('above_ema50');
   const [showEmaPriceModal, setShowEmaPriceModal] = useState(false);
 
-  // Ema Fiyat Seçenekleri Listesi
   const emaPriceOptions = [
     { label: 'Fiyat > EMA 50 (Yükseliş Trendi)', value: 'above_ema50' },
     { label: 'Fiyat < EMA 50 (Düşüş Trendi)', value: 'below_ema50' },
@@ -124,6 +125,9 @@ export default function App() {
     try {
       const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
       let url = `${cleanServerUrl}/backtest?symbol=${symbol}&interval=${interval}&limit=1000`;
+      if (startDate.trim()) url += `&start_date=${startDate.trim()}`;
+      if (endDate.trim()) url += `&end_date=${endDate.trim()}`;
+
       url += `&initial_balance=${balance}&position_pct=${posPct}&max_open_positions=${maxPos}`;
       url += `&use_rsi=${useRsi}&use_macd=${useMacd}&use_ema_50_200=${useEma50200}&use_ema_20_50=${useEma2050}&use_ema_price=${useEmaPrice}`;
       url += `&rsi_op=${rsiOp}&rsi_val1=${rsiVal1}&rsi_val2=${rsiVal2}`;
@@ -262,11 +266,11 @@ export default function App() {
         {/* SECENEK 1: STRATEJİ & TEST FORMU */}
         {activeTab === 'strategy' && (
           <View>
-            {/* SUNUCU ADRESİ VE PARİTE AYAR KARTI */}
+            {/* SUNUCU ADRESİ KARTI */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucusu & Parite</Text>
+              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucusu</Text>
               <TextInput
-                style={[styles.input, { color: '#10b981', fontWeight: '600', marginBottom: 10 }]}
+                style={[styles.input, { color: '#10b981', fontWeight: '600' }]}
                 value={serverUrl}
                 onChangeText={setServerUrl}
                 placeholder="https://trading-bot-33es.onrender.com"
@@ -274,6 +278,12 @@ export default function App() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
+            </View>
+
+            {/* PARİTE & TARİH FİLTRESİ KARTI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
+              <Text style={[styles.cardTitle, { color: '#f59e0b' }]}>📅 Parite & Tarih Filtresi</Text>
+              
               <View style={styles.inputRow}>
                 <View style={styles.inputCol}>
                   <Text style={styles.inputLabel}>Sembol</Text>
@@ -304,6 +314,30 @@ export default function App() {
                   </View>
                 </View>
               </View>
+
+              {/* TARİH FİLTRESİ GİRDİ ALANLARI */}
+              <View style={[styles.inputRow, { marginTop: 8 }]}>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Başlangıç Tarihi (YYYY-AA-GG)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={startDate}
+                    onChangeText={setStartDate}
+                    placeholder="YYYY-AA-GG (Örn: 2024-01-01)"
+                    placeholderTextColor="#6b7280"
+                  />
+                </View>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Bitiş Tarihi (Opsiyonel)</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={endDate}
+                    onChangeText={setEndDate}
+                    placeholder="Boş bırakılırsa günümüz"
+                    placeholderTextColor="#6b7280"
+                  />
+                </View>
+              </View>
             </View>
 
             {/* PORTFÖY & RİSK YÖNETİMİ */}
@@ -332,9 +366,9 @@ export default function App() {
               </View>
             </View>
 
-            {/* YENİ ERGONOMİK & MODERN STRATEJİ KRİTERLERİ PANELİ */}
+            {/* STRATEJİ KRİTERLERİ PANELİ */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
-              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri (Tam Liste)</Text>
+              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
 
               {/* 1. RSI KRİTERİ */}
               <View style={styles.criterionBox}>
@@ -451,7 +485,7 @@ export default function App() {
                 )}
               </View>
 
-              {/* 5. FİYAT / EMA KONUMU (MODAL İLE DÜZENLİ SEÇİM) */}
+              {/* 5. FİYAT / EMA KONUMU */}
               <View style={styles.criterionBox}>
                 <View style={styles.switchRow}>
                   <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
