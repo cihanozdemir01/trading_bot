@@ -51,6 +51,12 @@ class AIConsultRequest(BaseModel):
 class SignalScanRequest(BaseModel):
     symbols: List[str]
     interval: str = "1h"
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+
+class TelegramConfigRequest(BaseModel):
+    bot_token: str
+    chat_id: str
 
 @app.on_event("startup")
 def startup_event():
@@ -115,14 +121,27 @@ def get_top5_tickers():
         ]
     return results
 
+@app.post("/config/telegram")
+def save_telegram_config(req: TelegramConfigRequest):
+    """
+    Kullanıcının Telegram Bot Token ve Chat ID bilgilerini kaydeder ve test mesajı gönderir.
+    """
+    notifier.set_credentials(req.bot_token, req.chat_id)
+    test_msg = "📲 **[ALGOTRADE TELEGRAM BAĞLANTISI BAŞARILI]**\n\nTelegram Botunuz ve Chat ID'niz başarıyla doğrulandı! Canlı Envelope sinyalleri bu kanala aktarılacaktır."
+    success = notifier.send_message(test_msg, custom_token=req.bot_token, custom_chat_id=req.chat_id)
+    return {"status": "success" if success else "error", "message_sent": success}
+
 @app.post("/signal/scan")
 def scan_signals(req: SignalScanRequest):
     """
-    Seçilen kripto paraları Volatility Envelope (Lookback 100, Bandwidth 8, Multiplier 3) ile tarar.
-    Sinyal yakalandığında otomatik Telegram bildirimi gönderir!
+    Seçilen zaman dilimi (15m, 1h, 4h, 1d) ve kripto paralar için Volatility Envelope taraması yapar.
+    Sinyal yakalandığında Telegram bildirimi gönderir!
     """
     scan_results = []
     telegram_sent_count = 0
+
+    bot_tok = req.bot_token if req.bot_token else notifier.token
+    chat_id = req.chat_id if req.chat_id else notifier.chat_id
 
     for sym in req.symbols:
         raw_sym = sym.replace("/", "").upper()
@@ -139,15 +158,15 @@ def scan_signals(req: SignalScanRequest):
             "raw_symbol": raw_sym,
             "signal": sig,
             "price": price,
+            "interval": req.interval,
             "reason": res.get("reason", "Nötr Bandlar Arasında"),
             "timestamp": df.iloc[-1]['timestamp'].strftime("%H:%M:%S") if 'timestamp' in df.columns else "Şimdi"
         }
         scan_results.append(item)
 
-        # Eğer Sinyal BUY veya SELL ise Telegram bildirimi fırlat!
         if sig in ("BUY", "SELL"):
             msg = (
-                f"📡 **[CANLI ENVELOPE SİNYALİ]**\n\n"
+                f"📡 **[CANLI ENVELOPE SİNYALİ - {req.interval.upper()}]**\n\n"
                 f"🪙 **Parite:** {sym}\n"
                 f"🚦 **Yön:** {sig} {'🟢' if sig == 'BUY' else '🔴'}\n"
                 f"💵 **Canlı Fiyat:** ${price:,.2f}\n"
@@ -156,8 +175,8 @@ def scan_signals(req: SignalScanRequest):
                 f"💡 Telegram botunuz canlı alım/satım uyarısını iletti."
             )
             try:
-                notifier.send_message(msg)
-                telegram_sent_count += 1
+                sent = notifier.send_message(msg, custom_token=bot_tok, custom_chat_id=chat_id)
+                if sent: telegram_sent_count += 1
             except Exception as e:
                 print(f"Telegram gönderme hatası: {e}")
 
@@ -235,16 +254,13 @@ def ai_consult(req: AIConsultRequest):
     if "optimize" in q or "iyileş" in q or "derin" in q or "öneri" in q or "reçete" in q:
         resp.append("\n🎯 **Veri Odaklı İyileştirme Reçetesi:**")
         if trades < 10:
-            resp.append("⚠️ **Örneklem Yetersizliği:** Gerçekleştirilen işlem sayısı 10'un altında. İstatistiksel güvenilirlik için test tarih aralığını genişletin veya daha alt zaman dilimlerine (Örn: 15m) geçin.")
-        
+            resp.append("⚠️ **Örneklem Yetersizliği:** Gerçekleştirilen işlem sayısı 10'un altında.")
         if wr < 50.0:
-            resp.append(f"🔴 **Düşük Win Rate (%{wr:.1f}):** Yanlış sinyal (whipsaw) oranı yüksek. Sadece osilatörlere (RSI/MACD) güvenmek yerine **Fiyat > EMA 200** ve **Envelope (100,8,3)** filtresini aktif edin.")
+            resp.append(f"🔴 **Düşük Win Rate (%{wr:.1f}):** Yanlış sinyal oranı yüksek.")
         else:
-            resp.append(f"🟢 **Yüksek Win Rate (%{wr:.1f}):** Başarı oranınız güçlü. Kar katlama potansiyelini artırmak için Take Profit seviyenizi sabit %3.0 yerine Trailing Stop (Takip Eden Stop) ile dinamik hale getirin.")
-
+            resp.append(f"🟢 **Yüksek Win Rate (%{wr:.1f}):** Başarı oranınız güçlü.")
     else:
-        resp.append(f"\n🤖 **Genel Strateji Teşhisi:**")
-        resp.append(f"Toplam **{trades} işlem** incelendi. Profit Factor: **{pf:.2f}**.")
+        resp.append(f"\n🤖 **Genel Strateji Teşhisi:** Toplam {trades} işlem incelendi.")
 
     return {"reply": "\n".join(resp)}
 

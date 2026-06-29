@@ -6,23 +6,30 @@ class TelegramNotifier:
     def __init__(self):
         self.token = config.TELEGRAM_BOT_TOKEN
         self.chat_id = config.TELEGRAM_CHAT_ID
-        self.base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
 
-    def send_message(self, text: str) -> bool:
+    def set_credentials(self, token: str, chat_id: str):
+        if token: self.token = token.strip()
+        if chat_id: self.chat_id = chat_id.strip()
+
+    def send_message(self, text: str, custom_token: str = None, custom_chat_id: str = None) -> bool:
         """
         Telegram grubuna/kanalına Markdown formatında mesaj yollar.
         """
-        if not self.token or not self.chat_id:
+        token = custom_token.strip() if custom_token else self.token
+        chat_id = custom_chat_id.strip() if custom_chat_id else self.chat_id
+
+        if not token or not chat_id:
             print(f"[TELEGRAM SIMULATOR]: {text}")
             return False
 
+        base_url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
-            "chat_id": self.chat_id,
+            "chat_id": chat_id,
             "text": text,
             "parse_mode": "Markdown"
         }
         try:
-            response = requests.post(self.base_url, json=payload, timeout=5)
+            response = requests.post(base_url, json=payload, timeout=8)
             return response.status_code == 200
         except Exception as e:
             logging.error(f"Telegram mesaj gönderme hatası: {e}")

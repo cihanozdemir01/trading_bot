@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -43,11 +43,21 @@ export default function App() {
   // Canlı İşlem Bot Durumu
   const [isBotActive, setIsBotActive] = useState(false);
 
-  // SİNYAL MODÜLÜ STATE'LERİ (Kripto Para Seçimi & Tarama)
+  // SİNYAL MODÜLÜ STATE'LERİ (Zaman Dilimi, Otomatik Tarama, Telegram)
   const availableScanCoins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'AVAX/USDT', 'DOGE/USDT'];
-  const [selectedScanCoins, setSelectedScanCoins] = useState(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
+  const [selectedScanCoins, setSelectedScanCoins] = useState(['BTC/USDT', 'ETH/USDT', 'SOLUSDT']);
+  const [scanInterval, setScanInterval] = useState('1h');
+  const [autoScanActive, setAutoScanActive] = useState(false);
   const [scanResults, setScanResults] = useState([]);
   const [scanning, setScanning] = useState(false);
+
+  // Telegram Kimlik Bilgileri
+  const [telegramToken, setTelegramToken] = useState('');
+  const [telegramChatId, setTelegramChatId] = useState('');
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
+
+  // Otomatik Tarama Timer Ref
+  const autoScanTimerRef = useRef(null);
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -118,6 +128,21 @@ export default function App() {
     fetchTop5Tickers();
   }, []);
 
+  // Otomatik Tarama Polling Effect
+  useEffect(() => {
+    if (autoScanActive) {
+      runEnvelopeSignalScan();
+      autoScanTimerRef.current = setInterval(() => {
+        runEnvelopeSignalScan();
+      }, 30000); // 30 saniyede bir otomatik tara ve Telegram'a at
+    } else {
+      if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
+    }
+    return () => {
+      if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
+    };
+  }, [autoScanActive, selectedScanCoins, scanInterval]);
+
   const toggleCoinSelection = (coin) => {
     if (selectedScanCoins.includes(coin)) {
       if (selectedScanCoins.length > 1) {
@@ -139,18 +164,44 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           symbols: selectedScanCoins,
-          interval: '1h'
+          interval: scanInterval,
+          bot_token: telegramToken,
+          chat_id: telegramChatId
         })
       });
       const data = await response.json();
       setScanResults(data.all_results || []);
-      if (data.telegram_sent > 0) {
-        Alert.alert("🚀 Telegram Bildirimi Gönderildi!", `${data.telegram_sent} adet canlı sinyal Telegram kanalınıza iletildi.`);
-      }
     } catch (e) {
-      Alert.alert("Hata", "Sinyal taraması yapılırken sunucuya bağlanılamadı.");
+      console.log("Sinyal tarama hatası:", e);
     } finally {
       setScanning(false);
+    }
+  };
+
+  const saveTelegramConfig = async () => {
+    if (!telegramToken.trim() || !telegramChatId.trim()) {
+      Alert.alert("Eksik Bilgi", "Lütfen Telegram Bot Token ve Chat ID alanlarını doldurun.");
+      return;
+    }
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      const response = await fetch(`${cleanServerUrl}/config/telegram`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_token: telegramToken.trim(),
+          chat_id: telegramChatId.trim()
+        })
+      });
+      const data = await response.json();
+      if (data.message_sent) {
+        setShowTelegramModal(false);
+        Alert.alert("Bağlantı Başarılı! 🎉", "Telegram doğrulama mesajı gruba/kanala iletildi.");
+      } else {
+        Alert.alert("Bağlantı Başarısız", "Telegram bilgileriniz doğrulanamadı. Lütfen Bot Token ve Chat ID değerlerini kontrol edin.");
+      }
+    } catch (e) {
+      Alert.alert("Hata", "Sunucuya bağlanırken hata oluştu.");
     }
   };
 
@@ -304,10 +355,9 @@ export default function App() {
         </TouchableOpacity>
       )}
 
-      {/* MODÜL 1: ANA EKRAN (HOME DASHBOARD & 3 MODÜL) */}
+      {/* MODÜL 1: ANA EKRAN */}
       {currentModule === 'home' && (
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* İLK 5 KRİPTO CANLI FİYAT VERİSİ DOĞRULAMA KARTI */}
           <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <Text style={[styles.cardTitle, { color: '#10b981', margin: 0 }]}>📈 Canlı Fiyat Doğrulama (İlk 5 Kripto)</Text>
@@ -337,12 +387,11 @@ export default function App() {
             )}
           </View>
 
-          {/* UYGULAMA MODÜLLERİ LİSTESİ */}
           <Text style={{ color: '#f3f4f6', fontSize: 16, fontWeight: '700', marginVertical: 10, paddingLeft: 4 }}>
             🎯 Uygulama Modülleri
           </Text>
 
-          {/* MODÜL 1: BACKTEST MODÜLÜ KARTI */}
+          {/* MODÜL 1 */}
           <TouchableOpacity style={styles.moduleCard} onPress={() => setCurrentModule('backtest_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#6366f1' }]}>
@@ -358,7 +407,7 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* MODÜL 2: CANLI SİNYAL & TELEGRAM MODÜLÜ KARTI */}
+          {/* MODÜL 2 */}
           <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]} onPress={() => setCurrentModule('signal_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#a855f7' }]}>
@@ -374,7 +423,7 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* MODÜL 3: CANLI İŞLEM MODÜLÜ KARTI */}
+          {/* MODÜL 3 */}
           <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]} onPress={() => setCurrentModule('live_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#f59e0b' }]}>
@@ -403,17 +452,54 @@ export default function App() {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* İNDİKATÖR BİLGİ KARTI */}
-            <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
-              <Text style={[styles.cardTitle, { color: '#c084fc' }]}>📈 Volatility Envelope İndikatörü</Text>
-              <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
-                <View style={styles.miniChip}><Text style={styles.chipText}>Lookback: 100</Text></View>
-                <View style={styles.miniChip}><Text style={styles.chipText}>Bandwidth: 8</Text></View>
-                <View style={styles.miniChip}><Text style={styles.chipText}>Multiplier: 3.0x</Text></View>
+            {/* TELEGRAM BİLDİRİM AYARLARI BUTONU & DURUMU */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(0, 136, 204, 0.5)', backgroundColor: 'rgba(0, 136, 204, 0.08)' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: '#38bdf8', margin: 0 }]}>📲 Telegram Bildirim Bağlantısı</Text>
+                  <Text style={{ color: telegramToken ? '#10b981' : '#f59e0b', fontSize: 11, marginTop: 4 }}>
+                    {telegramToken ? '🟢 Bot Token ve Chat ID Ayarlandı' : '⚠️ Bildirim gönderilmesi için Telegram bilgilerinizi tanımlayın.'}
+                  </Text>
+                </View>
+                <TouchableOpacity style={[styles.actionChip, { backgroundColor: '#0284c7', borderColor: '#38bdf8' }]} onPress={() => setShowTelegramModal(true)}>
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>⚙️ Ayarla</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 8 }}>
-                * Fiyat 3.0x Alt Zarfa değdiğinde 🟢 AL, Üst Zarfa değdiğinde 🔴 SAT sinyali üretip Telegram'a bildirim gönderir.
-              </Text>
+            </View>
+
+            {/* ZAMAN DİLİMİ VE OTOMATİK TARAMA SWİTCH KARTI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
+              <Text style={[styles.cardTitle, { color: '#c084fc' }]}>⏱️ Tarama Zaman Dilimi &amp; Otomasyon</Text>
+              
+              <Text style={styles.inputLabel}>Zaman Dilimi Seçin</Text>
+              <View style={styles.segmentedContainer}>
+                {['15m', '1h', '4h', '1d'].map((tf) => (
+                  <TouchableOpacity
+                    key={tf}
+                    style={[styles.segmentedBtn, scanInterval === tf && { backgroundColor: '#a855f7' }]}
+                    onPress={() => setScanInterval(tf)}
+                  >
+                    <Text style={[styles.segmentedText, scanInterval === tf && styles.segmentedTextActive]}>{tf}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={[styles.switchRow, { marginTop: 14 }]}>
+                <View>
+                  <Text style={styles.switchLabel}>🔄 Otomatik 7/24 Piyasa Taraması</Text>
+                  <Text style={{ color: '#9ca3af', fontSize: 10 }}>Arka planda periyodik olarak tara ve Telegram'a gönder</Text>
+                </View>
+                <Switch
+                  value={autoScanActive}
+                  onValueChange={(val) => {
+                    setAutoScanActive(val);
+                    if (val && !telegramToken) {
+                      Alert.alert("Bilgi", "Otomatik tarama başlatıldı. Bildirim almak için Telegram bilgilerinizi tanımlamayı unutmayın!");
+                    }
+                  }}
+                  trackColor={{ false: '#374151', true: '#a855f7' }}
+                />
+              </View>
             </View>
 
             {/* KRİPTO PARA SEÇİM SEKMESİ */}
@@ -437,7 +523,7 @@ export default function App() {
               </View>
             </View>
 
-            {/* TARAMA BUTONU */}
+            {/* MANUEL TARAMA BUTONU */}
             <TouchableOpacity
               style={[styles.submitBtn, { backgroundColor: '#a855f7', marginVertical: 10 }]}
               onPress={runEnvelopeSignalScan}
@@ -446,7 +532,7 @@ export default function App() {
               {scanning ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.submitBtnText}>📲 Piyasayı Tara ve Telegram'a Gönder</Text>
+                <Text style={styles.submitBtnText}>📲 Piyasayı Anında Tara ({scanInterval.toUpperCase()})</Text>
               )}
             </TouchableOpacity>
 
@@ -457,7 +543,7 @@ export default function App() {
                 scanResults.map((item, idx) => (
                   <View key={idx} style={styles.tradeItem}>
                     <View style={styles.tradeRow}>
-                      <Text style={styles.tickerSymbol}>{item.symbol}</Text>
+                      <Text style={styles.tickerSymbol}>{item.symbol} ({item.interval})</Text>
                       <View style={[styles.sideBadge, item.signal === 'BUY' ? styles.badgeBuy : item.signal === 'SELL' ? styles.badgeSell : { backgroundColor: 'rgba(156,163,175,0.2)' }]}>
                         <Text style={styles.badgeText}>{item.signal}</Text>
                       </View>
@@ -600,79 +686,7 @@ export default function App() {
                       <TextInput style={styles.input} value={posPct} onChangeText={setPosPct} keyboardType="numeric" />
                     </View>
                   </View>
-
-                  <View style={styles.inputRow}>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>Stop Loss (%)</Text>
-                      <TextInput style={styles.input} value={slPct} onChangeText={setSlPct} keyboardType="numeric" />
-                    </View>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>Take Profit (%)</Text>
-                      <TextInput style={styles.input} value={tpPct} onChangeText={setTpPct} keyboardType="numeric" />
-                    </View>
-                  </View>
-
-                  <View style={{ marginTop: 6 }}>
-                    <Text style={styles.inputLabel}>Max Eşzamanlı Pozisyon Sayısı</Text>
-                    <TextInput style={styles.input} value={maxPos} onChangeText={setMaxPos} keyboardType="numeric" />
-                  </View>
                 </View>
-
-                <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
-                  <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Modüler Strateji Kriterleri</Text>
-                  
-                  <View style={styles.criterionBox}>
-                    <View style={styles.switchRow}>
-                      <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
-                      <Switch value={useRsi} onValueChange={setUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                    </View>
-                  </View>
-
-                  <View style={styles.criterionBox}>
-                    <View style={styles.switchRow}>
-                      <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
-                      <Switch value={useMacd} onValueChange={setUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                    </View>
-                  </View>
-
-                  <View style={styles.criterionBox}>
-                    <View style={styles.switchRow}>
-                      <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
-                      <Switch value={useEmaPrice} onValueChange={setUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
-                    </View>
-                  </View>
-                </View>
-              </View>
-            )}
-
-            {activeTab === 'ai' && (
-              <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
-                <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 DERİN KANTİTATİF AI STRATEJİ DANIŞMANI</Text>
-                {backtestResult.ai_advice && backtestResult.ai_advice.map((advice, index) => (
-                  <View key={index} style={styles.adviceBox}>
-                    <Text style={styles.adviceText}>{advice.replace(/\*\*/g, '')}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {activeTab === 'history' && (
-              <View style={styles.sectionCard}>
-                <Text style={styles.cardTitle}>📋 Geçmiş İşlem Kayıtları</Text>
-                {backtestResult.trades && backtestResult.trades.length > 0 ? (
-                  backtestResult.trades.slice().reverse().map((trade, index) => (
-                    <View key={index} style={styles.tradeItem}>
-                      <View style={styles.tradeRow}>
-                        <View style={[styles.sideBadge, trade.side === 'BUY' ? styles.badgeBuy : styles.badgeSell]}>
-                          <Text style={styles.badgeText}>{trade.side}</Text>
-                        </View>
-                        <Text style={styles.tradeDate}>{trade.entry_time ? trade.entry_time.replace('T', ' ').substring(0, 16) : 'N/A'}</Text>
-                      </View>
-                    </View>
-                  ))
-                ) : (
-                  <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>⚠️ Henüz gerçekleşmiş bir işlem bulunmuyor.</Text>
-                )}
               </View>
             )}
           </ScrollView>
@@ -691,53 +705,51 @@ export default function App() {
         </View>
       )}
 
-      {/* MODÜL 4: CANLI İŞLEM MODÜLÜ DETAY SAYFASI */}
-      {currentModule === 'live_module' && (
-        <View style={{ flex: 1 }}>
-          <View style={styles.moduleNavHeader}>
-            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
-              <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
+      {/* TELEGRAM BİLDİRİM AYARLARI MODALI */}
+      <Modal visible={showTelegramModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#38bdf8' }]}>
+            <Text style={styles.modalTitle}>📲 Telegram Bildirim Ayarları</Text>
+            <Text style={styles.modalSub}>Canlı alım-satım ve Envelope sinyallerinin iletileceği Telegram Bot bilgilerinizi girin:</Text>
+            
+            <Text style={styles.inputLabel}>Telegram Bot Token</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 12 }]}
+              value={telegramToken}
+              onChangeText={setTelegramToken}
+              placeholder="Örn: 123456789:ABCdefGhIJKlmNoP..."
+              placeholderTextColor="#6b7280"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={styles.inputLabel}>Telegram Chat ID</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 16 }]}
+              value={telegramChatId}
+              onChangeText={setTelegramChatId}
+              placeholder="Örn: -100123456789 veya 1234567"
+              placeholderTextColor="#6b7280"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: '#0284c7' }]} onPress={saveTelegramConfig}>
+              <Text style={styles.downloadBtnText}>💾 Kaydet ve Doğrulama Mesajı Gönder</Text>
             </TouchableOpacity>
-            <Text style={{ color: '#f59e0b', fontSize: 14, fontWeight: '700' }}>⚡ Canlı İşlem Modülü</Text>
+            
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowTelegramModal(false)}>
+              <Text style={styles.closeBtnText}>İptal</Text>
+            </TouchableOpacity>
           </View>
-
-          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            <View style={[styles.sectionCard, { borderColor: isBotActive ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)' }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <View>
-                  <Text style={styles.cardTitle}>🤖 7/24 Otomatik Bot Durumu</Text>
-                  <Text style={{ color: isBotActive ? '#10b981' : '#ef4444', fontWeight: '700', fontSize: 13 }}>
-                    {isBotActive ? '🟢 AKTİF - Binance Piyasasını Tarıyor' : '🔴 PASİF - Bot Durduruldu'}
-                  </Text>
-                </View>
-                <Switch
-                  value={isBotActive}
-                  onValueChange={(val) => {
-                    setIsBotActive(val);
-                    Alert.alert(val ? 'Bot Başlatıldı' : 'Bot Durduruldu', val ? '7/24 Canlı işlem taraması aktif edildi.' : 'Otomatik alım-satım durduruldu.');
-                  }}
-                  trackColor={{ false: '#374151', true: '#10b981' }}
-                />
-              </View>
-            </View>
-
-            <View style={styles.sectionCard}>
-              <Text style={styles.cardTitle}>💼 Açık Canlı Pozisyonlar (0)</Text>
-              <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-                {isBotActive ? '⏳ Sinyal bekleniyor... Henüz açık pozisyon bulunmuyor.' : '⚠️ Bot pasif durumda. Canlı alım yapabilmek için üstteki botu aktif edin.'}
-              </Text>
-            </View>
-          </ScrollView>
         </View>
-      )}
+      </Modal>
 
       {/* RENDER SUNUCU AYARLARI MODALI */}
       <Modal visible={showServerModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: '#10b981' }]}>
             <Text style={styles.modalTitle}>🌐 Canlı Sunucu (API) Ayarları</Text>
-            <Text style={styles.modalSub}>Bulut sunucu adresinizi değiştirebilir veya güncelleyebilirsiniz:</Text>
-            
             <TextInput
               style={[styles.input, { color: '#10b981', fontWeight: '600', marginBottom: 16 }]}
               value={tempServerUrl}
@@ -745,13 +757,10 @@ export default function App() {
               placeholder="https://trading-bot-33es.onrender.com"
               placeholderTextColor="#6b7280"
               autoCapitalize="none"
-              autoCorrect={false}
             />
-
             <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: '#10b981' }]} onPress={saveServerUrl}>
               <Text style={styles.downloadBtnText}>💾 Kaydet ve Güncelle</Text>
             </TouchableOpacity>
-            
             <TouchableOpacity style={styles.closeBtn} onPress={() => setShowServerModal(false)}>
               <Text style={styles.closeBtnText}>İptal</Text>
             </TouchableOpacity>
@@ -759,15 +768,13 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* OTOMATİK GÜNCELLEME İNDİRME MODALI */}
+      {/* OTOMATİK GÜNCELLEME MODALI */}
       {updateInfo && (
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>🚀 Yeni Güncelleme Mevcut!</Text>
               <Text style={styles.modalSub}>Sürüm: {updateInfo.latestVersion} (Mevcut: v{CURRENT_APP_VERSION})</Text>
-              <Text style={styles.modalNotesTitle}>Neler Yeni?</Text>
-              <Text style={styles.modalNotes}>{updateInfo.releaseNotes}</Text>
               <TouchableOpacity
                 style={styles.downloadBtn}
                 onPress={() => {
@@ -776,9 +783,6 @@ export default function App() {
                 }}
               >
                 <Text style={styles.downloadBtnText}>📲 Güncellemeyi İndir &amp; Yükle</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.closeBtn} onPress={() => setShowUpdateModal(false)}>
-                <Text style={styles.closeBtnText}>Daha Sonra</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -850,45 +854,24 @@ const styles = StyleSheet.create({
   segmentedBtnActive: { backgroundColor: '#6366f1' },
   segmentedText: { color: '#9ca3af', fontSize: 11, fontWeight: '500' },
   segmentedTextActive: { color: '#ffffff', fontWeight: '700' },
-  selectDropdownBtn: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1f2937', padding: 10, borderRadius: 8, marginTop: 8, borderWidth: 1, borderColor: 'rgba(99,102,241,0.3)' },
-  selectDropdownText: { color: '#f3f4f6', fontSize: 12, fontWeight: '600' },
   submitBtn: { backgroundColor: '#6366f1', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
   submitBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   stickyBottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#0b0f19', paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
   stickySubmitBtn: { backgroundColor: '#6366f1', borderRadius: 12, paddingVertical: 14, alignItems: 'center', boxShadow: '0 4px 20px rgba(99, 102, 241, 0.5)' },
   stickySubmitBtnText: { color: '#ffffff', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
-  progressBox: { marginTop: 12, backgroundColor: 'rgba(0,0,0,0.4)', padding: 10, borderRadius: 8 },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  progressStatus: { color: '#9ca3af', fontSize: 11 },
-  progressPct: { color: '#10b981', fontSize: 11, fontWeight: '700' },
-  progressBarTrack: { height: 6, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 3, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: '#10b981' },
-  chipCloud: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
-  actionChip: { backgroundColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' },
-  actionChipText: { color: '#c084fc', fontSize: 11, fontWeight: '600' },
-  adviceBox: { backgroundColor: 'rgba(255,255,255,0.03)', borderLeftWidth: 3, borderLeftColor: '#a855f7', padding: 10, borderRadius: 4, marginBottom: 8 },
-  adviceText: { color: '#e5e7eb', fontSize: 12, lineHeight: 17 },
   tradeItem: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.05)', paddingVertical: 10 },
   tradeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sideBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   badgeBuy: { backgroundColor: 'rgba(16,185,129,0.2)' },
   badgeSell: { backgroundColor: 'rgba(239,68,68,0.2)' },
   badgeText: { fontSize: 10, fontWeight: '700', color: '#fff' },
-  tradeDate: { color: '#9ca3af', fontSize: 11 },
-  tradePnl: { fontSize: 12, fontWeight: '700' },
-  tradeSubInfo: { color: '#6b7280', fontSize: 11, marginTop: 4 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: '#111827', width: '100%', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#a855f7' },
   modalTitle: { color: '#f3f4f6', fontSize: 16, fontWeight: '700', marginBottom: 4 },
   modalSub: { color: '#9ca3af', fontSize: 12, marginBottom: 14 },
-  modalNotesTitle: { color: '#c084fc', fontSize: 13, fontWeight: '600', marginBottom: 4 },
-  modalNotes: { color: '#e5e7eb', fontSize: 12, marginBottom: 20, lineHeight: 18 },
-  modalOptionBtn: { padding: 12, borderRadius: 8, backgroundColor: '#1f2937', marginBottom: 6 },
-  modalOptionBtnActive: { backgroundColor: '#6366f1' },
-  modalOptionText: { color: '#9ca3af', fontSize: 13 },
-  modalOptionTextActive: { color: '#ffffff', fontWeight: '700' },
   downloadBtn: { backgroundColor: '#a855f7', paddingVertical: 12, borderRadius: 10, alignItems: 'center', marginBottom: 10 },
   downloadBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
   closeBtn: { paddingVertical: 8, alignItems: 'center', marginTop: 6 },
-  closeBtnText: { color: '#9ca3af', fontSize: 13 }
+  closeBtnText: { color: '#9ca3af', fontSize: 13 },
+  actionChip: { backgroundColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' },
 });
