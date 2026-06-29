@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = "1.0.0";
+export const CURRENT_APP_VERSION = "1.0.5";
 export const GITHUB_REPO_OWNER = "cihanozdemir01";
 export const GITHUB_REPO_NAME = "trading_bot";
 
@@ -9,8 +9,13 @@ export const GITHUB_REPO_NAME = "trading_bot";
  * @returns true if remote > current
  */
 export function isNewerVersion(current, remote) {
-  const cParts = current.replace('v', '').split('.').map(Number);
-  const rParts = remote.replace('v', '').split('.').map(Number);
+  const cClean = current.replace('v', '').trim();
+  const rClean = remote.replace('v', '').trim();
+
+  if (cClean === rClean) return false;
+
+  const cParts = cClean.split('.').map(Number);
+  const rParts = rClean.split('.').map(Number);
 
   for (let i = 0; i < Math.max(cParts.length, rParts.length); i++) {
     const c = cParts[i] || 0;
@@ -36,9 +41,8 @@ export async function checkForAppUpdates() {
     }
 
     const data = await response.json();
-    const latestVersion = data.tag_name || data.name || "1.0.0";
+    const latestVersion = data.tag_name || data.name || "1.0.5";
     
-    // APK indirme bağlantısını veya release sayfasını bul
     let apkUrl = data.html_url;
     if (data.assets && data.assets.length > 0) {
       const apkAsset = data.assets.find(a => a.name.endsWith('.apk'));
@@ -66,6 +70,5 @@ export async function checkForAppUpdates() {
  * Sürüm Çakışması Engelleme ve Depo Temizliği Guard'ı
  */
 export function preventVersionConflicts() {
-  // Eski sürüm önbellekleri ile yeni kural yapıları çakışmasın diye schema kontrolü
   console.log(`[UpdateGuard] App version ${CURRENT_APP_VERSION} active. Conflict check clean.`);
 }

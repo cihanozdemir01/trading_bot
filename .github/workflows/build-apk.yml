@@ -26,6 +26,14 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: 🏷️ Inject Release Version into App Code
+        run: |
+          TAG_VER="${{ github.ref_name }}"
+          CLEAN_VER="${TAG_VER#v}"
+          echo "Injecting version: $CLEAN_VER"
+          sed -i "s/CURRENT_APP_VERSION = \".*\"/CURRENT_APP_VERSION = \"$CLEAN_VER\"/g" mobile/services/UpdateService.js
+          sed -i "s/\"version\": \".*\"/\"version\": \"$CLEAN_VER\"/g" mobile/app.json
+
       - name: 📦 Install Mobile Dependencies
         run: |
           cd mobile
