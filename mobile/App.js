@@ -26,8 +26,10 @@ export default function App() {
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
 
-  // Sunucu (Backend) Bağlantı Adresi
+  // Sunucu (Backend) Bağlantı Adresi & Modal
   const [serverUrl, setServerUrl] = useState('https://trading-bot-33es.onrender.com');
+  const [tempServerUrl, setTempServerUrl] = useState('https://trading-bot-33es.onrender.com');
+  const [showServerModal, setShowServerModal] = useState(false);
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -157,7 +159,7 @@ export default function App() {
   const askAIConsult = async (queryText) => {
     setAiQuery(queryText);
     setAiLoading(true);
-    setAiResponse('⏳ Yapay Zeka stratejinizi analiz ediyor...');
+    setAiResponse('⏳ Derin yapay zeka analiz motoru veri üretiyor...');
 
     try {
       const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
@@ -183,6 +185,12 @@ export default function App() {
     }
   };
 
+  const saveServerUrl = () => {
+    setServerUrl(tempServerUrl);
+    setShowServerModal(false);
+    Alert.alert('Sunucu Güncellendi', `Yeni sunucu adresi kaydedildi:\n${tempServerUrl}`);
+  };
+
   const pnlNet = backtestResult.final_balance - backtestResult.initial_balance;
   const selectedEmaLabel = emaPriceOptions.find(o => o.value === emaPriceFilter)?.label || emaPriceFilter;
 
@@ -190,7 +198,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* ÜST BAŞLIK & VERSİYON */}
+      {/* ÜST BAŞLIK & SUNUCU ROZETLERİ */}
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <View style={styles.logoIcon}>
@@ -203,13 +211,25 @@ export default function App() {
                 <Text style={styles.versionText}>v{CURRENT_APP_VERSION}</Text>
               </View>
             </View>
-            <Text style={styles.appSubTitle}>Profesyonel Ticaret & Auto-Updater</Text>
+            <Text style={styles.appSubTitle}>Profesyonel Kantitatif Ticaret</Text>
           </View>
         </View>
-        <TouchableOpacity style={styles.liveBadge} onPress={checkUpdates}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveText}>GitHub Canlı</Text>
-        </TouchableOpacity>
+        
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          <TouchableOpacity
+            style={styles.liveBadge}
+            onPress={() => {
+              setTempServerUrl(serverUrl);
+              setShowServerModal(true);
+            }}
+          >
+            <View style={styles.liveDot} />
+            <Text style={styles.liveText}>🌐 Render Canlı</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.liveBadge, { backgroundColor: 'rgba(99,102,241,0.15)' }]} onPress={checkUpdates}>
+            <Text style={[styles.liveText, { color: '#818cf8' }]}>GitHub</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* GÜNCELLEME UYARI BARI */}
@@ -266,20 +286,6 @@ export default function App() {
         {/* SECENEK 1: STRATEJİ & TEST FORMU */}
         {activeTab === 'strategy' && (
           <View>
-            {/* SUNUCU ADRESİ KARTI */}
-            <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
-              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Canlı Render Sunucusu</Text>
-              <TextInput
-                style={[styles.input, { color: '#10b981', fontWeight: '600' }]}
-                value={serverUrl}
-                onChangeText={setServerUrl}
-                placeholder="https://trading-bot-33es.onrender.com"
-                placeholderTextColor="#6b7280"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-
             {/* PARİTE & TARİH FİLTRESİ KARTI */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]}>
               <Text style={[styles.cardTitle, { color: '#f59e0b' }]}>📅 Parite & Tarih Filtresi</Text>
@@ -315,10 +321,10 @@ export default function App() {
                 </View>
               </View>
 
-              {/* TARİH FİLTRESİ GİRDİ ALANLARI */}
+              {/* HİZALANMIŞ TARİH GİRDİ ALANLARI */}
               <View style={[styles.inputRow, { marginTop: 8 }]}>
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Başlangıç Tarihi (YYYY-AA-GG)</Text>
+                  <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
                   <TextInput
                     style={styles.input}
                     value={startDate}
@@ -328,19 +334,19 @@ export default function App() {
                   />
                 </View>
                 <View style={styles.inputCol}>
-                  <Text style={styles.inputLabel}>Bitiş Tarihi (Opsiyonel)</Text>
+                  <Text style={styles.inputLabel}>Bitiş Tarihi</Text>
                   <TextInput
                     style={styles.input}
                     value={endDate}
                     onChangeText={setEndDate}
-                    placeholder="Boş bırakılırsa günümüz"
+                    placeholder="YYYY-AA-GG (Boş = Günümüz)"
                     placeholderTextColor="#6b7280"
                   />
                 </View>
               </View>
             </View>
 
-            {/* PORTFÖY & RİSK YÖNETİMİ */}
+            {/* PORTFÖY & RİSK YÖNETİMİ (MAX EŞZAMANLI POZİSYON EKLENDİ) */}
             <View style={styles.sectionCard}>
               <Text style={styles.cardTitle}>💰 Portföy & Risk Yönetimi</Text>
               <View style={styles.inputRow}>
@@ -363,6 +369,11 @@ export default function App() {
                   <Text style={styles.inputLabel}>Take Profit (%)</Text>
                   <TextInput style={styles.input} value={tpPct} onChangeText={setTpPct} keyboardType="numeric" />
                 </View>
+              </View>
+
+              <View style={{ marginTop: 6 }}>
+                <Text style={styles.inputLabel}>Max Eşzamanlı Pozisyon Sayısı</Text>
+                <TextInput style={styles.input} value={maxPos} onChangeText={setMaxPos} keyboardType="numeric" />
               </View>
             </View>
 
@@ -523,23 +534,23 @@ export default function App() {
           </View>
         )}
 
-        {/* SECENEK 2: ETKİLEŞİMLİ AI DANIŞMANI */}
+        {/* SECENEK 2: ETKİLEŞİMLİ VERİ ODAKLI AI DANIŞMANI */}
         {activeTab === 'ai' && (
           <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
-            <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 ETKİLEŞİMLİ AI STRATEJİ DANIŞMANI</Text>
-            <Text style={{ color: '#9ca3af', fontSize: 13, marginBottom: 12 }}>
-              Stratejinizi daha kârlı hale getirmek için yapay zekadan anında öneriler alın:
+            <Text style={[styles.cardTitle, { color: '#c084fc' }]}>🤖 DERİN KANTİTATİF AI STRATEJİ DANIŞMANI</Text>
+            <Text style={{ color: '#9ca3af', fontSize: 12, marginBottom: 12 }}>
+              Stratejinizi matematiksel beklenti (Expected Value) ve veri odaklı metriklerle iyileştirin:
             </Text>
 
             <View style={styles.chipCloud}>
               <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Derin strateji iyileştirme reçetesi hazırla')}>
-                <Text style={styles.actionChipText}>⚡ Stratejiyi İyileştir</Text>
+                <Text style={styles.actionChipText}>⚡ Derin İyileştirme Reçetesi</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Win Rate nasıl artırılır?')}>
-                <Text style={styles.actionChipText}>📊 Win Rate Yükselt</Text>
+                <Text style={styles.actionChipText}>📊 Win Rate Optimizasyonu</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.actionChip} onPress={() => askAIConsult('Max Drawdown ve riski düşür')}>
-                <Text style={styles.actionChipText}>🛡️ Riski Düşür</Text>
+                <Text style={styles.actionChipText}>🛡️ Risk &amp; Drawdown Telemetrisi</Text>
               </TouchableOpacity>
             </View>
 
@@ -558,7 +569,7 @@ export default function App() {
                 onChangeText={setAiQuery}
               />
               <TouchableOpacity style={[styles.submitBtn, { backgroundColor: '#a855f7' }]} onPress={() => askAIConsult(aiQuery)}>
-                <Text style={styles.submitBtnText}>💬 AI Danışmana Sor</Text>
+                <Text style={styles.submitBtnText}>💬 Veri Odaklı AI Danışmana Sor</Text>
               </TouchableOpacity>
             </View>
 
@@ -597,6 +608,34 @@ export default function App() {
           </View>
         )}
       </ScrollView>
+
+      {/* RENDER SUNUCU AYARLARI MODALI */}
+      <Modal visible={showServerModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#10b981' }]}>
+            <Text style={styles.modalTitle}>🌐 Canlı Sunucu (API) Ayarları</Text>
+            <Text style={styles.modalSub}>Bulut sunucu adresinizi değiştirebilir veya güncelleyebilirsiniz:</Text>
+            
+            <TextInput
+              style={[styles.input, { color: '#10b981', fontWeight: '600', marginBottom: 16 }]}
+              value={tempServerUrl}
+              onChangeText={setTempServerUrl}
+              placeholder="https://trading-bot-33es.onrender.com"
+              placeholderTextColor="#6b7280"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: '#10b981' }]} onPress={saveServerUrl}>
+              <Text style={styles.downloadBtnText}>💾 Kaydet ve Güncelle</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowServerModal(false)}>
+              <Text style={styles.closeBtnText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* EMA FİYAT KONUMU SEÇİM MODALI */}
       <Modal visible={showEmaPriceModal} transparent animationType="slide">
@@ -665,7 +704,7 @@ const styles = StyleSheet.create({
   versionBadge: { backgroundColor: 'rgba(99,102,241,0.25)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: '#6366f1' },
   versionText: { color: '#818cf8', fontSize: 10, fontWeight: '700' },
   appSubTitle: { color: '#9ca3af', fontSize: 10 },
-  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  liveBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(16,185,129,0.15)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)' },
   liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10b981' },
   liveText: { color: '#10b981', fontSize: 11, fontWeight: '600' },
   updateNoticeBanner: { backgroundColor: '#a855f7', padding: 10, alignItems: 'center' },
