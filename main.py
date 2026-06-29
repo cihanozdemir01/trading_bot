@@ -1,5 +1,7 @@
+import os
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 from pathlib import Path
 from pydantic import BaseModel
@@ -15,6 +17,15 @@ app = FastAPI(
     title="Python Algoritmik Ticaret Botu",
     description="TradingView bağımsız, Python Sinyal Motorlu ve Backtest Destekli Otomatik Ticaret Platformu",
     version="1.0.0"
+)
+
+# CORS (Mobil ve Web İzinleri)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 signal_engine = SignalEngine()
@@ -104,9 +115,6 @@ def run_backtest(
 
 @app.post("/ai-consult")
 def ai_consult(req: AIConsultRequest):
-    """
-    Sayfa üzerinden kullanıcının sorduğu sorulara veya derin strateji iyileştirme isteklerine yanıt üretir.
-    """
     q = req.user_query.lower()
     resp = []
 
@@ -138,4 +146,5 @@ def analyze_symbol(symbol: str = "BTCUSDT"):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

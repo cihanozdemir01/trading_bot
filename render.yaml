@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: algotrade-bot-api
+    env: docker
+    plan: starter # 7/24 uyanık kalan profesyonel ücretli plan
+    dockerfilePath: Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: TRADING_MODE
+        value: testnet
