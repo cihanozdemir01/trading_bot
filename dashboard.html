@@ -102,7 +102,6 @@
         }
         .btn-chip:hover { background: rgba(168, 85, 247, 0.3); transform: translateY(-1px); }
 
-        /* CANLI YÜKLENME İLERLEME ÇUBUĞU (PROGRESS BAR) */
         .progress-box {
             display: none;
             margin-top: 14px;
@@ -353,11 +352,11 @@
                     <div class="form-row" style="margin-top: 8px;">
                         <div class="input-group">
                             <label>Başlangıç Tarihi</label>
-                            <input type="date" id="bt-start" value="2026-01-01">
+                            <input type="date" id="bt-start" value="">
                         </div>
                         <div class="input-group">
                             <label>Bitiş Tarihi</label>
-                            <input type="date" id="bt-end" value="2026-06-27">
+                            <input type="date" id="bt-end" value="">
                         </div>
                     </div>
                 </div>
@@ -365,7 +364,6 @@
                 <div style="margin-top: 20px;">
                     <button type="button" class="btn" id="btn-submit" style="width: 100%;" onclick="runBacktest()">🚀 Stratejiyi Test Et</button>
                     
-                    <!-- YENİ: ANİMASYONLU İLERLEME ÇUBUĞU (PROGRESS BAR) -->
                     <div class="progress-box" id="progress-box">
                         <div class="progress-title-row">
                             <span id="progress-status-text">⏳ Binance Mumları Çekiliyor...</span>
