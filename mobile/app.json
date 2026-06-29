@@ -2,7 +2,7 @@
   "expo": {
     "name": "AlgoTrade Mobile",
     "slug": "trading-bot-mobile",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -11,6 +11,7 @@
     },
     "android": {
       "package": "com.algotrade.mobile",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#0b0f19",
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -20,13 +20,14 @@ import {
   preventVersionConflicts
 } from './services/UpdateService';
 
-const BACKEND_URL = "http://127.0.0.1:8000";
-
 export default function App() {
   const [activeTab, setActiveTab] = useState('strategy');
   const [loading, setLoading] = useState(false);
   const [progressStatus, setProgressStatus] = useState('');
   const [progressPct, setProgressPct] = useState(0);
+
+  // Sunucu (Backend) Bağlantı Adresi
+  const [serverUrl, setServerUrl] = useState('http://10.0.2.2:8000'); // Gerçek telefonlar için örn: http://192.168.1.X:8000
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -68,7 +69,6 @@ export default function App() {
   const [aiResponse, setAiResponse] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
 
-  // UYGULAMA AÇILIŞINDA OTOMATİK GÜNCELLEME KONTROLÜ VE ÇAKIŞMA KORUMASI
   useEffect(() => {
     preventVersionConflicts();
     checkUpdates();
@@ -100,7 +100,8 @@ export default function App() {
     }, 200);
 
     try {
-      let url = `${BACKEND_URL}/backtest?symbol=${symbol}&interval=${interval}&limit=1000`;
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      let url = `${cleanServerUrl}/backtest?symbol=${symbol}&interval=${interval}&limit=1000`;
       url += `&initial_balance=${balance}&position_pct=${posPct}&max_open_positions=${maxPos}`;
       url += `&use_rsi=${useRsi}&use_macd=${useMacd}&use_ema_50_200=false&use_ema_price=${useEmaPrice}`;
       url += `&rsi_op=${rsiOp}&rsi_val1=${rsiVal1}&rsi_val2=70`;
@@ -116,7 +117,10 @@ export default function App() {
       setBacktestResult(data);
     } catch (error) {
       clearInterval(timer);
-      Alert.alert('Bağlantı Hatası', 'Backend sunucusuna bağlanılamadı. Python main.py sunucusunun çalıştığından emin olun.\n\nHata: ' + error.message);
+      Alert.alert(
+        'Bağlantı Hatası',
+        `Backend sunucusuna bağlanılamadı (${serverUrl}).\n\n💡 İPUCU: Bilgisayarınızın yerel IP adresini (Örn: http://192.168.1.35:8000) Sunucu Adresi kutusuna yazın.\n\nHata: ` + error.message
+      );
     } finally {
       setTimeout(() => {
         setLoading(false);
@@ -130,7 +134,8 @@ export default function App() {
     setAiResponse('⏳ Yapay Zeka stratejinizi analiz ediyor...');
 
     try {
-      const response = await fetch(`${BACKEND_URL}/ai-consult`, {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      const response = await fetch(`${cleanServerUrl}/ai-consult`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -158,7 +163,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="light" />
 
-      {/* ÜST BAŞLIK & VERSİYON / CANLI BAĞLANTI İKONU */}
+      {/* ÜST BAŞLIK & VERSİYON */}
       <View style={styles.header}>
         <View style={styles.logoRow}>
           <View style={styles.logoIcon}>
@@ -180,7 +185,7 @@ export default function App() {
         </TouchableOpacity>
       </View>
 
-      {/* GÜNCELLEME UYARI BARI (EĞER NİHALİ SÜRÜM YENİYSEN) */}
+      {/* GÜNCELLEME UYARI BARI */}
       {updateInfo && updateInfo.hasUpdate && (
         <TouchableOpacity style={styles.updateNoticeBanner} onPress={() => setShowUpdateModal(true)}>
           <Text style={styles.updateNoticeText}>🚀 Yeni Güncelleme Mevcut! ({updateInfo.latestVersion}) — Yüklemek için dokunun</Text>
@@ -234,6 +239,23 @@ export default function App() {
         {/* SECENEK 1: STRATEJİ & TEST FORMU */}
         {activeTab === 'strategy' && (
           <View>
+            {/* SUNUCU ADRESİ AYAR KARTI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(16, 185, 129, 0.4)' }]}>
+              <Text style={[styles.cardTitle, { color: '#10b981', fontSize: 13 }]}>🌐 Python Sunucu Bağlantı Adresi (API URL)</Text>
+              <TextInput
+                style={[styles.input, { color: '#10b981', fontWeight: '600' }]}
+                value={serverUrl}
+                onChangeText={setServerUrl}
+                placeholder="Örn: http://192.168.1.35:8000"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Text style={{ color: '#9ca3af', fontSize: 10, marginTop: 4 }}>
+                * Gerçek telefonlar bilgisayarın IP adresini kullanmalıdır (Örn: http://192.168.1.X:8000)
+              </Text>
+            </View>
+
             <View style={styles.sectionCard}>
               <Text style={styles.cardTitle}>💰 Portföy & Risk Yönetimi</Text>
 
