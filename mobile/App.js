@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import {
   StyleSheet,
@@ -58,6 +59,12 @@ export default function App() {
   const [autoScanActive, setAutoScanActive] = useState(false);
   const [scanResults, setScanResults] = useState([]);
   const [scanning, setScanning] = useState(false);
+
+  // Tarayıcı Kriter Seçimleri
+  const [scanUseRsi, setScanUseRsi] = useState(true);
+  const [scanUseMacd, setScanUseMacd] = useState(true);
+  const [scanUseEmaPrice, setScanUseEmaPrice] = useState(false);
+  const [scanUseEnvelope, setScanUseEnvelope] = useState(true);
 
   // Telegram Kimlik Bilgileri
   const [telegramToken, setTelegramToken] = useState('');
@@ -134,8 +141,59 @@ export default function App() {
   useEffect(() => {
     preventVersionConflicts();
     checkUpdates();
-    fetchTop5Tickers();
+    loadPersistentSettings();
   }, []);
+
+  const loadPersistentSettings = async () => {
+    try {
+      const savedServer = await AsyncStorage.getItem('@serverUrl');
+      const savedTelegramToken = await AsyncStorage.getItem('@telegramToken');
+      const savedTelegramChatId = await AsyncStorage.getItem('@telegramChatId');
+      const savedBinanceApiKey = await AsyncStorage.getItem('@binanceApiKey');
+      const savedBinanceSecretKey = await AsyncStorage.getItem('@binanceSecretKey');
+      const savedUseTestnet = await AsyncStorage.getItem('@useTestnet');
+
+      let currentServer = serverUrl;
+      if (savedServer) {
+        setServerUrl(savedServer);
+        setTempServerUrl(savedServer);
+        currentServer = savedServer;
+      }
+      if (savedTelegramToken) setTelegramToken(savedTelegramToken);
+      if (savedTelegramChatId) setTelegramChatId(savedTelegramChatId);
+      if (savedBinanceApiKey) setBinanceApiKey(savedBinanceApiKey);
+      if (savedBinanceSecretKey) setBinanceSecretKey(savedBinanceSecretKey);
+      if (savedUseTestnet !== null) setUseTestnet(savedUseTestnet === 'true');
+
+      const cleanServerUrl = currentServer.trim().replace(/\/$/, '');
+      fetchTop5Tickers(cleanServerUrl);
+
+      // Sunucuya arka planda otomatik senkronizasyon yap
+      if (savedTelegramToken && savedTelegramChatId) {
+        fetch(`${cleanServerUrl}/config/telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bot_token: savedTelegramToken, chat_id: savedTelegramChatId })
+        }).catch(e => console.log("Telegram auto-sync failed:", e));
+      }
+
+      if (savedBinanceApiKey && savedBinanceSecretKey) {
+        fetch(`${cleanServerUrl}/config/binance`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            api_key: savedBinanceApiKey,
+            secret_key: savedBinanceSecretKey,
+            use_testnet: savedUseTestnet === 'true'
+          })
+        }).catch(e => console.log("Binance auto-sync failed:", e));
+      }
+
+    } catch (e) {
+      console.log("Failed to load settings:", e);
+      fetchTop5Tickers(serverUrl);
+    }
+  };
 
   // Otomatik Tarama Polling Effect
   useEffect(() => {
@@ -210,9 +268,13 @@ export default function App() {
       });
       const data = await response.json();
       if (data.status === 'success') {
+        await AsyncStorage.setItem('@binanceApiKey', binanceApiKey.trim());
+        await AsyncStorage.setItem('@binanceSecretKey', binanceSecretKey.trim());
+        await AsyncStorage.setItem('@useTestnet', useTestnet ? 'true' : 'false');
+
         setShowBinanceModal(false);
         setLiveBalance(data.balance);
-        Alert.alert("Bağlantı Başarılı! ⚡", `Binance API anahtarı doğrulandı. Kullanılabilir Bakiye: ${data.balance} USDT`);
+        Alert.alert("Bağlantı Başarılı! ⚡", `Binance API anahtarı doğrulandı ve cihazınıza kaydedildi. Kullanılabilir Bakiye: ${data.balance} USDT`);
         fetchLiveTradingData();
       } else {
         Alert.alert("Bağlantı Başarısız", "API Anahtarı doğrulanamadı.");
@@ -247,7 +309,11 @@ export default function App() {
           symbols: selectedScanCoins,
           interval: scanInterval,
           bot_token: telegramToken,
-          chat_id: telegramChatId
+          chat_id: telegramChatId,
+          use_rsi: scanUseRsi,
+          use_macd: scanUseMacd,
+          use_ema_price: scanUseEmaPrice,
+          use_envelope: scanUseEnvelope
         })
       });
       const data = await response.json();
@@ -276,8 +342,11 @@ export default function App() {
       });
       const data = await response.json();
       if (data.message_sent) {
+        await AsyncStorage.setItem('@telegramToken', telegramToken.trim());
+        await AsyncStorage.setItem('@telegramChatId', telegramChatId.trim());
+
         setShowTelegramModal(false);
-        Alert.alert("Bağlantı Başarılı! 🎉", "Telegram doğrulama mesajı gruba/kanala iletildi.");
+        Alert.alert("Bağlantı Başarılı! 🎉", "Telegram doğrulama mesajı gruba/kanala iletildi ve bilgileri cihazınıza kaydedildi.");
       } else {
         Alert.alert("Bağlantı Başarısız", "Telegram bilgileri doğrulanamadı.");
       }
@@ -386,11 +455,16 @@ export default function App() {
     }
   };
 
-  const saveServerUrl = () => {
-    setServerUrl(tempServerUrl);
-    setShowServerModal(false);
-    Alert.alert('Sunucu Güncellendi', `Yeni sunucu adresi kaydedildi:\n${tempServerUrl}`);
-    fetchTop5Tickers();
+  const saveServerUrl = async () => {
+    try {
+      await AsyncStorage.setItem('@serverUrl', tempServerUrl.trim());
+      setServerUrl(tempServerUrl.trim());
+      setShowServerModal(false);
+      Alert.alert('Sunucu Güncellendi', `Yeni sunucu adresi kaydedildi ve cihazınıza kaydedildi:\n${tempServerUrl}`);
+      fetchTop5Tickers(tempServerUrl.trim());
+    } catch (e) {
+      console.log("Failed to save server URL:", e);
+    }
   };
 
   const pnlNet = backtestResult.final_balance - backtestResult.initial_balance;
@@ -668,6 +742,39 @@ export default function App() {
                   }}
                   trackColor={{ false: '#374151', true: '#a855f7' }}
                 />
+              </View>
+            </View>
+
+            {/* TARAMA KRİTERLERİ SEÇİMİ */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(99, 102, 241, 0.5)' }]}>
+              <Text style={[styles.cardTitle, { color: '#818cf8' }]}>☑️ Tarama Kriterlerini Seçin</Text>
+              
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📊 RSI Kriteri</Text>
+                  <Switch value={scanUseRsi} onValueChange={setScanUseRsi} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+              </View>
+
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📉 MACD Kriteri</Text>
+                  <Switch value={scanUseMacd} onValueChange={setScanUseMacd} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+              </View>
+
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📍 Fiyat / EMA Konumu</Text>
+                  <Switch value={scanUseEmaPrice} onValueChange={setScanUseEmaPrice} trackColor={{ false: '#374151', true: '#6366f1' }} />
+                </View>
+              </View>
+
+              <View style={styles.criterionBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>📈 Volatility Envelope</Text>
+                  <Switch value={scanUseEnvelope} onValueChange={setScanUseEnvelope} trackColor={{ false: '#374151', true: '#a855f7' }} />
+                </View>
               </View>
             </View>
 

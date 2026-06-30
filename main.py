@@ -68,6 +68,13 @@ class SignalScanRequest(BaseModel):
     interval: str = "1h"
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
+    # Dinamik Tarama Seçenekleri (İndikatörler)
+    use_rsi: bool = True
+    use_macd: bool = True
+    use_ema_50_200: bool = False
+    use_ema_20_50: bool = False
+    use_ema_price: bool = False
+    use_envelope: bool = True
 
 class TelegramConfigRequest(BaseModel):
     bot_token: str
@@ -163,15 +170,10 @@ def save_binance_config(req: BinanceConfigRequest):
 
 @app.get("/live/positions")
 def get_live_positions():
-    """
-    Eğer Binance API tanımlıysa ccxt ile gerçek açık pozisyonları çeker.
-    Eğer API tanımlı değilse ekranın boş görünmemesi için demo/simüle pozisyonları döner.
-    """
     if execution_engine.exchange:
         real_positions = execution_engine.fetch_positions()
         return {"status": "success", "positions": real_positions, "mode": "real"}
     
-    # API girilmemişse, demo simüle pozisyonları fiyat değişimlerine göre güncelle
     tickers = get_top5_tickers()
     ticker_dict = {t["symbol"]: t["price"] for t in tickers}
 
@@ -193,11 +195,28 @@ def get_live_orders():
 
 @app.post("/signal/scan")
 def scan_signals(req: SignalScanRequest):
+    """
+    Kullanıcının mobil uygulamadan seçtiği aktif indikatör kriterlerine göre
+    kripto paraları tarar ve Telegram sinyallerini üretir.
+    """
     scan_results = []
     telegram_sent_count = 0
 
     bot_tok = req.bot_token if req.bot_token else notifier.token
     chat_id = req.chat_id if req.chat_id else notifier.chat_id
+
+    # Seçili kriterlere göre yeni bir geçici sinyal motoru başlat
+    custom_engine = SignalEngine(
+        use_rsi=req.use_rsi,
+        use_macd=req.use_macd,
+        use_ema_50_200=req.use_ema_50_200,
+        use_ema_20_50=req.use_ema_20_50,
+        use_ema_price=req.use_ema_price,
+        use_envelope=req.use_envelope,
+        envelope_lookback=100,
+        envelope_bandwidth=8,
+        envelope_multiplier=3.0
+    )
 
     for sym in req.symbols:
         raw_sym = sym.replace("/", "").upper()
@@ -205,7 +224,7 @@ def scan_signals(req: SignalScanRequest):
         if df.empty or len(df) < 50:
             continue
 
-        res = signal_engine.analyze(df, symbol=raw_sym)
+        res = custom_engine.analyze(df, symbol=raw_sym)
         sig = res.get("signal", "HOLD")
         price = res.get("price", 0.0)
 
@@ -215,20 +234,20 @@ def scan_signals(req: SignalScanRequest):
             "signal": sig,
             "price": price,
             "interval": req.interval,
-            "reason": res.get("reason", "Nötr Bandlar Arasında"),
+            "reason": res.get("reason", "Nötr Beklemede"),
             "timestamp": df.iloc[-1]['timestamp'].strftime("%H:%M:%S") if 'timestamp' in df.columns else "Şimdi"
         }
         scan_results.append(item)
 
         if sig in ("BUY", "SELL"):
             msg = (
-                f"📡 **[CANLI ENVELOPE SİNYALİ - {req.interval.upper()}]**\n\n"
+                f"📡 **[CANLI SİNYAL BİLDİRİMİ - {req.interval.upper()}]**\n\n"
                 f"🪙 **Parite:** {sym}\n"
                 f"🚦 **Yön:** {sig} {'🟢' if sig == 'BUY' else '🔴'}\n"
                 f"💵 **Canlı Fiyat:** ${price:,.2f}\n"
-                f"🎯 **Strateji:** Envelope (100, 8, 3.0) Volatilite Sınır Teması\n"
+                f"🎯 **Aktif Kriterler:** {item['reason']}\n"
                 f"🕒 **Zaman:** {item['timestamp']} (UTC+3)\n\n"
-                f"💡 Telegram botunuz canlı alım/satım uyarısını iletti."
+                f"💡 AlgoTrade tarayıcı sinyali Telegram'a iletti."
             )
             try:
                 sent = notifier.send_message(msg, custom_token=bot_tok, custom_chat_id=chat_id)
