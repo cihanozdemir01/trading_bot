@@ -34,8 +34,35 @@ class ExecutionEngine:
                 return float(balance.get('USDT', {}).get('free', 1000.0))
             except Exception as e:
                 logging.error(f"Bakiye okuma hatası: {e}")
-                return 1000.0  # Simüle varsayılan bakiye
-        return 1000.0  # Simüle bakiye
+                return 1000.0
+        return 1000.0
+
+    def fetch_positions(self) -> list:
+        """
+        Binance vadeli işlemler hesabındaki gerçek açık pozisyonları çeker.
+        """
+        if self.exchange:
+            try:
+                positions = self.exchange.fetch_positions()
+                open_positions = []
+                for pos in positions:
+                    size = float(pos.get('contracts', 0) or pos.get('positionAmt', 0) or 0)
+                    if size != 0:
+                        open_positions.append({
+                            "symbol": pos.get('symbol', '').replace('USDT', '/USDT'),
+                            "size": size,
+                            "entry_price": float(pos.get('entryPrice', 0) or 0),
+                            "mark_price": float(pos.get('markPrice', 0) or 0),
+                            "pnl": float(pos.get('unrealizedPnl', 0) or 0),
+                            "pnl_pct": float(pos.get('percentage', 0) or 0.0),
+                            "sl": 0.0,
+                            "tp": 0.0
+                        })
+                return open_positions
+            except Exception as e:
+                logging.error(f"Açık pozisyonları ccxt ile okuma hatası: {e}")
+                return []
+        return []
 
     def execute_order(self, symbol: str, side: str, quantity: float, price: float, sl: float, tp: float) -> dict:
         """
@@ -80,7 +107,6 @@ class ExecutionEngine:
                 logging.error(f"Emir gönderme hatası: {e}")
                 return {"success": False, "reason": str(e)}
         else:
-            # Simüle Emir (API Key tanımlı değilse)
             return {
                 "success": True,
                 "order_id": "simulated_12345",

@@ -40,7 +40,7 @@ data_feed = DataFeed()
 BASE_DIR = Path(__file__).resolve().parent
 
 # Sunucu Hafızasında Tutulan Canlı Pozisyonlar & Emir Logları (Demo/Simüle Destekli)
-live_positions = [
+demo_positions = [
     {"symbol": "BTC/USDT", "size": 0.05, "entry_price": 96250.0, "mark_price": 96450.0, "pnl": 10.0, "pnl_pct": 0.20, "sl": 94800.0, "tp": 99000.0},
     {"symbol": "SOL/USDT", "size": 12.5, "entry_price": 185.20, "mark_price": 188.40, "pnl": 40.0, "pnl_pct": 1.72, "sl": 181.5, "tp": 195.0}
 ]
@@ -150,14 +150,10 @@ def save_telegram_config(req: TelegramConfigRequest):
 
 @app.post("/config/binance")
 def save_binance_config(req: BinanceConfigRequest):
-    """
-    Binance API Key ve Secret Key bilgilerini kaydeder.
-    """
     config.BINANCE_API_KEY = req.api_key.strip()
     config.BINANCE_API_SECRET = req.secret_key.strip()
     config.USE_TESTNET = req.use_testnet
     
-    # ExecutionEngine'i yeni bilgilerle yeniden başlat
     global execution_engine
     execution_engine = ExecutionEngine()
     
@@ -168,29 +164,31 @@ def save_binance_config(req: BinanceConfigRequest):
 @app.get("/live/positions")
 def get_live_positions():
     """
-    Açık canlı pozisyonları döner. Canlı fiyatlara göre PnL'leri günceller.
+    Eğer Binance API tanımlıysa ccxt ile gerçek açık pozisyonları çeker.
+    Eğer API tanımlı değilse ekranın boş görünmemesi için demo/simüle pozisyonları döner.
     """
+    if execution_engine.exchange:
+        real_positions = execution_engine.fetch_positions()
+        return {"status": "success", "positions": real_positions, "mode": "real"}
+    
+    # API girilmemişse, demo simüle pozisyonları fiyat değişimlerine göre güncelle
     tickers = get_top5_tickers()
     ticker_dict = {t["symbol"]: t["price"] for t in tickers}
 
-    for pos in live_positions:
+    for pos in demo_positions:
         sym = pos["symbol"]
         if sym in ticker_dict:
             pos["mark_price"] = ticker_dict[sym]
-            # Basit PnL Hesaplaması
             entry = pos["entry_price"]
             mark = pos["mark_price"]
             size = pos["size"]
             pos["pnl"] = (mark - entry) * size
             pos["pnl_pct"] = ((mark - entry) / entry) * 100.0
 
-    return {"status": "success", "positions": live_positions}
+    return {"status": "success", "positions": demo_positions, "mode": "demo_simulated"}
 
 @app.get("/live/orders")
 def get_live_orders():
-    """
-    Canlı işlem emir loglarını döner.
-    """
     return {"status": "success", "logs": live_orders_log}
 
 @app.post("/signal/scan")
