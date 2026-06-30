@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 
-export const CURRENT_APP_VERSION = "1.6.0";
+export const CURRENT_APP_VERSION = "1.7.0";
 export const GITHUB_REPO_OWNER = "cihanozdemir01";
 export const GITHUB_REPO_NAME = "trading_bot";
 
@@ -41,7 +41,7 @@ export async function checkForAppUpdates() {
     }
 
     const data = await response.json();
-    const latestVersion = data.tag_name || data.name || "1.6.0";
+    const latestVersion = data.tag_name || data.name || "1.7.0";
     
     let apkUrl = data.html_url;
     if (data.assets && data.assets.length > 0) {

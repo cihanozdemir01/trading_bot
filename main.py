@@ -1,5 +1,6 @@
 import os
 import requests
+import asyncio
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,6 +55,80 @@ live_orders_log = [
     "[Sistem] 7/24 websocket kanal tarayıcıları aktif.",
 ]
 
+# 7/24 Otomatik Bulut Tarama Konfigürasyonu
+scanner_config = {
+    "active": False,
+    "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+    "interval": "1h",
+    "use_rsi": True,
+    "use_macd": True,
+    "use_ema_50_200": False,
+    "use_ema_20_50": False,
+    "use_ema_price": False,
+    "use_envelope": True
+}
+
+last_alerts = {}  # Mükerrer sinyal gönderimini engellemek için son uyarılar hafızası
+
+async def background_scanner_loop():
+    """
+    7/24 Arka Plan Tarama Döngüsü.
+    Uygulama kapalı olsa dahi sunucuda sürekli çalışır ve sinyal oluşunca Telegram'a atar.
+    """
+    while True:
+        try:
+            if scanner_config["active"] and scanner_config["symbols"]:
+                symbols = scanner_config["symbols"]
+                interval = scanner_config["interval"]
+                
+                custom_engine = SignalEngine(
+                    use_rsi=scanner_config["use_rsi"],
+                    use_macd=scanner_config["use_macd"],
+                    use_ema_50_200=scanner_config["use_ema_50_200"],
+                    use_ema_20_50=scanner_config["use_ema_20_50"],
+                    use_ema_price=scanner_config["use_ema_price"],
+                    use_envelope=scanner_config["use_envelope"],
+                    envelope_lookback=100,
+                    envelope_bandwidth=8,
+                    envelope_multiplier=3.0
+                )
+
+                for sym in symbols:
+                    raw_sym = sym.replace("/", "").upper()
+                    df = data_feed.fetch_historical_klines(raw_sym, interval=interval, limit=200)
+                    if df.empty or len(df) < 50:
+                        continue
+
+                    res = custom_engine.analyze(df, symbol=raw_sym)
+                    sig = res.get("signal", "HOLD")
+                    price = res.get("price", 0.0)
+                    last_time = df.iloc[-1]['timestamp'].strftime("%Y-%m-%d %H:%M:%S") if 'timestamp' in df.columns else "Bilinmiyor"
+
+                    if sig in ("BUY", "SELL"):
+                        alert_key = f"{sym}_{interval}"
+                        alert_val = f"{last_time}_{sig}"
+                        
+                        # Eğer bu mumda bu sinyal daha önce gönderilmediyse Telegram'a at
+                        if last_alerts.get(alert_key) != alert_val:
+                            msg = (
+                                f"📡 **[OTOMATİK 7/24 BULUT TARAMA - {interval.upper()}]**\n\n"
+                                f"🪙 **Parite:** {sym}\n"
+                                f"🚦 **Yön:** {sig} {'🟢' if sig == 'BUY' else '🔴'}\n"
+                                f"💵 **Canlı Fiyat:** ${price:,.2f}\n"
+                                f"🎯 **Koşullar:** {res.get('reason', 'Kriter Uyuşumu')}\n"
+                                f"🕒 **Mum Zamanı:** {last_time} (UTC+3)\n\n"
+                                f"💡 Bu sinyal, telefonunuz kapalı olsa dahi 7/24 Render bulut sunucunuz tarafından yakalanmıştır."
+                            )
+                            sent = notifier.send_message(msg)
+                            if sent:
+                                last_alerts[alert_key] = alert_val
+                                print(f"[SCANNER] Telegram Sinyali Gönderildi: {sym} -> {sig}")
+            
+            await asyncio.sleep(60)  # Her 60 saniyede bir taramayı kolla
+        except Exception as e:
+            print(f"[SCANNER ERROR] Arka plan tarama hatası: {e}")
+            await asyncio.sleep(30)
+
 class AIConsultRequest(BaseModel):
     user_query: str
     symbol: str
@@ -68,13 +143,23 @@ class SignalScanRequest(BaseModel):
     interval: str = "1h"
     bot_token: Optional[str] = None
     chat_id: Optional[str] = None
-    # Dinamik Tarama Seçenekleri (İndikatörler)
     use_rsi: bool = True
     use_macd: bool = True
     use_ema_50_200: bool = False
     use_ema_20_50: bool = False
     use_ema_price: bool = False
     use_envelope: bool = True
+
+class AutoScanConfigRequest(BaseModel):
+    active: bool
+    symbols: List[str]
+    interval: str
+    use_rsi: bool
+    use_macd: bool
+    use_ema_50_200: bool
+    use_ema_20_50: bool
+    use_ema_price: bool
+    use_envelope: bool
 
 class TelegramConfigRequest(BaseModel):
     bot_token: str
@@ -91,6 +176,9 @@ def startup_event():
         init_db()
     except Exception as e:
         print(f"[WARN] DB başlatma uyarısı: {e}")
+    
+    # Arka plan bulut tarayıcısını asenkron çalıştır
+    asyncio.create_task(background_scanner_loop())
     print("[INFO] Algoritmik Ticaret Botu ve Yönetim Paneli Başlatıldı!")
 
 @app.get("/", response_class=HTMLResponse)
@@ -193,19 +281,33 @@ def get_live_positions():
 def get_live_orders():
     return {"status": "success", "logs": live_orders_log}
 
+@app.post("/signal/auto-scan/config")
+def update_auto_scan_config(req: AutoScanConfigRequest):
+    """
+    7/24 Arka Plan Bulut Tarama Ayarlarını günceller.
+    """
+    scanner_config["active"] = req.active
+    scanner_config["symbols"] = req.symbols
+    scanner_config["interval"] = req.interval
+    scanner_config["use_rsi"] = req.use_rsi
+    scanner_config["use_macd"] = req.use_macd
+    scanner_config["use_ema_50_200"] = req.use_ema_50_200
+    scanner_config["use_ema_20_50"] = req.use_ema_20_50
+    scanner_config["use_ema_price"] = req.use_ema_price
+    scanner_config["use_envelope"] = req.use_envelope
+
+    status_str = "AKTİF" if req.active else "PASİF"
+    live_orders_log.insert(0, f"[Scanner] 7/24 Bulut otomatik tarama {status_str} konuma getirildi.")
+    return {"status": "success", "scanner_active": req.active}
+
 @app.post("/signal/scan")
 def scan_signals(req: SignalScanRequest):
-    """
-    Kullanıcının mobil uygulamadan seçtiği aktif indikatör kriterlerine göre
-    kripto paraları tarar ve Telegram sinyallerini üretir.
-    """
     scan_results = []
     telegram_sent_count = 0
 
     bot_tok = req.bot_token if req.bot_token else notifier.token
     chat_id = req.chat_id if req.chat_id else notifier.chat_id
 
-    # Seçili kriterlere göre yeni bir geçici sinyal motoru başlat
     custom_engine = SignalEngine(
         use_rsi=req.use_rsi,
         use_macd=req.use_macd,

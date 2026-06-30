@@ -195,20 +195,33 @@ export default function App() {
     }
   };
 
-  // Otomatik Tarama Polling Effect
+  // 7/24 Bulut Tarama Ayarlarını Arka Planda Eşitle
   useEffect(() => {
-    if (autoScanActive) {
-      runEnvelopeSignalScan();
-      autoScanTimerRef.current = setInterval(() => {
-        runEnvelopeSignalScan();
-      }, 30000);
-    } else {
-      if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
+    syncAutoScanConfigToBackend(autoScanActive);
+  }, [autoScanActive, selectedScanCoins, scanInterval, scanUseRsi, scanUseMacd, scanUseEmaPrice, scanUseEnvelope]);
+
+  const syncAutoScanConfigToBackend = async (isActive) => {
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      await fetch(`${cleanServerUrl}/signal/auto-scan/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          active: isActive,
+          symbols: selectedScanCoins,
+          interval: scanInterval,
+          use_rsi: scanUseRsi,
+          use_macd: scanUseMacd,
+          use_ema_50_200: false,
+          use_ema_20_50: false,
+          use_ema_price: scanUseEmaPrice,
+          use_envelope: scanUseEnvelope
+        })
+      });
+    } catch (e) {
+      console.log("Failed to sync auto-scan config:", e);
     }
-    return () => {
-      if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
-    };
-  }, [autoScanActive, selectedScanCoins, scanInterval]);
+  };
 
   // Canlı İşlemler Polling Effect
   useEffect(() => {
