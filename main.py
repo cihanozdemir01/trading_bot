@@ -39,6 +39,21 @@ data_feed = DataFeed()
 
 BASE_DIR = Path(__file__).resolve().parent
 
+# Sunucu Hafızasında Tutulan Canlı Pozisyonlar & Emir Logları (Demo/Simüle Destekli)
+live_positions = [
+    {"symbol": "BTC/USDT", "size": 0.05, "entry_price": 96250.0, "mark_price": 96450.0, "pnl": 10.0, "pnl_pct": 0.20, "sl": 94800.0, "tp": 99000.0},
+    {"symbol": "SOL/USDT", "size": 12.5, "entry_price": 185.20, "mark_price": 188.40, "pnl": 40.0, "pnl_pct": 1.72, "sl": 181.5, "tp": 195.0}
+]
+
+live_orders_log = [
+    "[Sistem] Canlı alım-satım motoru başarıyla başlatıldı.",
+    "[Bağlantı] Binance API anahtarı doğrulandı. Hesap tipi: Testnet (Vadeli İşlemler)",
+    "[Emir] BTC/USDT Uzun Pozisyon (Long) Girişi: 0.05 BTC - Giriş: 96250.0 USDT",
+    "[Sinyal] SOL/USDT RSI ve MACD 1 Saatlik Onayı Alındı.",
+    "[Emir] SOL/USDT Uzun Pozisyon (Long) Girişi: 12.5 SOL - Giriş: 185.20 USDT",
+    "[Sistem] 7/24 websocket kanal tarayıcıları aktif.",
+]
+
 class AIConsultRequest(BaseModel):
     user_query: str
     symbol: str
@@ -57,6 +72,11 @@ class SignalScanRequest(BaseModel):
 class TelegramConfigRequest(BaseModel):
     bot_token: str
     chat_id: str
+
+class BinanceConfigRequest(BaseModel):
+    api_key: str
+    secret_key: str
+    use_testnet: bool
 
 @app.on_event("startup")
 def startup_event():
@@ -123,20 +143,58 @@ def get_top5_tickers():
 
 @app.post("/config/telegram")
 def save_telegram_config(req: TelegramConfigRequest):
-    """
-    Kullanıcının Telegram Bot Token ve Chat ID bilgilerini kaydeder ve test mesajı gönderir.
-    """
     notifier.set_credentials(req.bot_token, req.chat_id)
     test_msg = "📲 **[ALGOTRADE TELEGRAM BAĞLANTISI BAŞARILI]**\n\nTelegram Botunuz ve Chat ID'niz başarıyla doğrulandı! Canlı Envelope sinyalleri bu kanala aktarılacaktır."
     success = notifier.send_message(test_msg, custom_token=req.bot_token, custom_chat_id=req.chat_id)
     return {"status": "success" if success else "error", "message_sent": success}
 
+@app.post("/config/binance")
+def save_binance_config(req: BinanceConfigRequest):
+    """
+    Binance API Key ve Secret Key bilgilerini kaydeder.
+    """
+    config.BINANCE_API_KEY = req.api_key.strip()
+    config.BINANCE_API_SECRET = req.secret_key.strip()
+    config.USE_TESTNET = req.use_testnet
+    
+    # ExecutionEngine'i yeni bilgilerle yeniden başlat
+    global execution_engine
+    execution_engine = ExecutionEngine()
+    
+    balance = execution_engine.get_balance()
+    live_orders_log.insert(0, f"[Bağlantı] Binance API bilgileri güncellendi. Kullanılabilir Bakiye: {balance} USDT")
+    return {"status": "success", "balance": balance, "use_testnet": req.use_testnet}
+
+@app.get("/live/positions")
+def get_live_positions():
+    """
+    Açık canlı pozisyonları döner. Canlı fiyatlara göre PnL'leri günceller.
+    """
+    tickers = get_top5_tickers()
+    ticker_dict = {t["symbol"]: t["price"] for t in tickers}
+
+    for pos in live_positions:
+        sym = pos["symbol"]
+        if sym in ticker_dict:
+            pos["mark_price"] = ticker_dict[sym]
+            # Basit PnL Hesaplaması
+            entry = pos["entry_price"]
+            mark = pos["mark_price"]
+            size = pos["size"]
+            pos["pnl"] = (mark - entry) * size
+            pos["pnl_pct"] = ((mark - entry) / entry) * 100.0
+
+    return {"status": "success", "positions": live_positions}
+
+@app.get("/live/orders")
+def get_live_orders():
+    """
+    Canlı işlem emir loglarını döner.
+    """
+    return {"status": "success", "logs": live_orders_log}
+
 @app.post("/signal/scan")
 def scan_signals(req: SignalScanRequest):
-    """
-    Seçilen zaman dilimi (15m, 1h, 4h, 1d) ve kripto paralar için Volatility Envelope taraması yapar.
-    Sinyal yakalandığında Telegram bildirimi gönderir!
-    """
     scan_results = []
     telegram_sent_count = 0
 

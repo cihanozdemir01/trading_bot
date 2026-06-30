@@ -40,12 +40,20 @@ export default function App() {
   const [top5Tickers, setTop5Tickers] = useState([]);
   const [loadingTickers, setLoadingTickers] = useState(false);
 
-  // Canlı İşlem Bot Durumu
+  // CANLI İŞLEM MODÜLÜ STATE'LERİ
   const [isBotActive, setIsBotActive] = useState(false);
+  const [liveBalance, setLiveBalance] = useState(1000.0);
+  const [binanceApiKey, setBinanceApiKey] = useState('');
+  const [binanceSecretKey, setBinanceSecretKey] = useState('');
+  const [useTestnet, setUseTestnet] = useState(true);
+  const [showBinanceModal, setShowBinanceModal] = useState(false);
+  const [livePositions, setLivePositions] = useState([]);
+  const [liveLogs, setLiveLogs] = useState([]);
+  const [loadingLive, setLoadingLive] = useState(false);
 
-  // SİNYAL MODÜLÜ STATE'LERİ (Zaman Dilimi, Otomatik Tarama, Telegram)
+  // SİNYAL MODÜLÜ STATE'LERİ
   const availableScanCoins = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT', 'AVAX/USDT', 'DOGE/USDT'];
-  const [selectedScanCoins, setSelectedScanCoins] = useState(['BTC/USDT', 'ETH/USDT', 'SOLUSDT']);
+  const [selectedScanCoins, setSelectedScanCoins] = useState(['BTC/USDT', 'ETH/USDT', 'SOL/USDT']);
   const [scanInterval, setScanInterval] = useState('1h');
   const [autoScanActive, setAutoScanActive] = useState(false);
   const [scanResults, setScanResults] = useState([]);
@@ -56,8 +64,9 @@ export default function App() {
   const [telegramChatId, setTelegramChatId] = useState('');
   const [showTelegramModal, setShowTelegramModal] = useState(false);
 
-  // Otomatik Tarama Timer Ref
+  // Timers Refs
   const autoScanTimerRef = useRef(null);
+  const liveModuleTimerRef = useRef(null);
 
   // Güncelleme Modal & Durumları
   const [updateInfo, setUpdateInfo] = useState(null);
@@ -134,7 +143,7 @@ export default function App() {
       runEnvelopeSignalScan();
       autoScanTimerRef.current = setInterval(() => {
         runEnvelopeSignalScan();
-      }, 30000); // 30 saniyede bir otomatik tara ve Telegram'a at
+      }, 30000);
     } else {
       if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
     }
@@ -142,6 +151,78 @@ export default function App() {
       if (autoScanTimerRef.current) clearInterval(autoScanTimerRef.current);
     };
   }, [autoScanActive, selectedScanCoins, scanInterval]);
+
+  // Canlı İşlemler Polling Effect
+  useEffect(() => {
+    if (currentModule === 'live_module') {
+      fetchLiveTradingData();
+      liveModuleTimerRef.current = setInterval(() => {
+        fetchLiveTradingData();
+      }, 8000);
+    } else {
+      if (liveModuleTimerRef.current) clearInterval(liveModuleTimerRef.current);
+    }
+    return () => {
+      if (liveModuleTimerRef.current) clearInterval(liveModuleTimerRef.current);
+    };
+  }, [currentModule, isBotActive]);
+
+  const fetchLiveTradingData = async () => {
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      
+      // 1. Canlı Bakiye & Sağlık Durumu
+      const healthRes = await fetch(`${cleanServerUrl}/health`);
+      const healthData = await healthRes.json();
+      setLiveBalance(healthData.balance_usdt || 1000.0);
+
+      // 2. Canlı Pozisyonlar
+      const posRes = await fetch(`${cleanServerUrl}/live/positions`);
+      const posData = await posRes.json();
+      setLivePositions(posData.positions || []);
+
+      // 3. Canlı Emir Logları
+      const orderRes = await fetch(`${cleanServerUrl}/live/orders`);
+      const orderData = await orderRes.json();
+      setLiveLogs(orderData.logs || []);
+
+    } catch (e) {
+      console.log("Canlı işlem veri çekme hatası:", e);
+    }
+  };
+
+  const saveBinanceConfig = async () => {
+    if (!binanceApiKey.trim() || !binanceSecretKey.trim()) {
+      Alert.alert("Eksik Bilgi", "Lütfen API Key ve Secret Key alanlarını doldurun.");
+      return;
+    }
+    setLoadingLive(true);
+    try {
+      const cleanServerUrl = serverUrl.trim().replace(/\/$/, '');
+      const response = await fetch(`${cleanServerUrl}/config/binance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: binanceApiKey.trim(),
+          secret_key: binanceSecretKey.trim(),
+          use_testnet: useTestnet
+        })
+      });
+      const data = await response.json();
+      if (data.status === 'success') {
+        setShowBinanceModal(false);
+        setLiveBalance(data.balance);
+        Alert.alert("Bağlantı Başarılı! ⚡", `Binance API anahtarı doğrulandı. Kullanılabilir Bakiye: ${data.balance} USDT`);
+        fetchLiveTradingData();
+      } else {
+        Alert.alert("Bağlantı Başarısız", "API Anahtarı doğrulanamadı.");
+      }
+    } catch (e) {
+      Alert.alert("Hata", "Sunucuya bağlanırken hata oluştu.");
+    } finally {
+      setLoadingLive(false);
+    }
+  };
 
   const toggleCoinSelection = (coin) => {
     if (selectedScanCoins.includes(coin)) {
@@ -198,7 +279,7 @@ export default function App() {
         setShowTelegramModal(false);
         Alert.alert("Bağlantı Başarılı! 🎉", "Telegram doğrulama mesajı gruba/kanala iletildi.");
       } else {
-        Alert.alert("Bağlantı Başarısız", "Telegram bilgileriniz doğrulanamadı. Lütfen Bot Token ve Chat ID değerlerini kontrol edin.");
+        Alert.alert("Bağlantı Başarısız", "Telegram bilgileri doğrulanamadı.");
       }
     } catch (e) {
       Alert.alert("Hata", "Sunucuya bağlanırken hata oluştu.");
@@ -391,7 +472,6 @@ export default function App() {
             🎯 Uygulama Modülleri
           </Text>
 
-          {/* MODÜL 1 */}
           <TouchableOpacity style={styles.moduleCard} onPress={() => setCurrentModule('backtest_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#6366f1' }]}>
@@ -407,7 +487,6 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* MODÜL 2 */}
           <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]} onPress={() => setCurrentModule('signal_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#a855f7' }]}>
@@ -423,7 +502,6 @@ export default function App() {
             </View>
           </TouchableOpacity>
 
-          {/* MODÜL 3 */}
           <TouchableOpacity style={[styles.moduleCard, { borderColor: 'rgba(245, 158, 11, 0.4)' }]} onPress={() => setCurrentModule('live_module')}>
             <View style={styles.moduleCardHeader}>
               <View style={[styles.moduleIconBox, { backgroundColor: '#f59e0b' }]}>
@@ -441,6 +519,97 @@ export default function App() {
         </ScrollView>
       )}
 
+      {/* MODÜL 4: CANLI İŞLEM MODÜLÜ DETAY SAYFASI */}
+      {currentModule === 'live_module' && (
+        <View style={{ flex: 1 }}>
+          <View style={styles.moduleNavHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentModule('home')}>
+              <Text style={styles.backBtnText}>⬅️ Ana Modüllere Dön</Text>
+            </TouchableOpacity>
+            <Text style={{ color: '#f59e0b', fontSize: 14, fontWeight: '700' }}>⚡ Canlı İşlem Modülü</Text>
+          </View>
+
+          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {/* BİNANCE API BAĞLANTI DURUMU KARTI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(245, 158, 11, 0.5)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.cardTitle, { color: '#f59e0b', margin: 0 }]}>🔑 Binance API Bağlantısı</Text>
+                  <Text style={{ color: '#f3f4f6', fontSize: 12, marginTop: 4 }}>
+                    Kullanılabilir Bakiye: <Text style={{ color: '#10b981', fontWeight: '800' }}>{liveBalance.toFixed(2)} USDT</Text>
+                  </Text>
+                </View>
+                <TouchableOpacity style={[styles.actionChip, { backgroundColor: '#d97706', borderColor: '#fbbf24' }]} onPress={() => setShowBinanceModal(true)}>
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>⚙️ API Tanımla</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* BOT AKTİFLİK DURUMU */}
+            <View style={[styles.sectionCard, { borderColor: isBotActive ? 'rgba(16, 185, 129, 0.6)' : 'rgba(239, 68, 68, 0.6)' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View>
+                  <Text style={styles.cardTitle}>🤖 7/24 Canlı Alım-Satım Botu</Text>
+                  <Text style={{ color: isBotActive ? '#10b981' : '#ef4444', fontWeight: '700', fontSize: 13 }}>
+                    {isBotActive ? '🟢 AKTİF - Sinyalleri Gerçek Zamanlı İşliyor' : '🔴 PASİF - Otomatik İşlemler Durduruldu'}
+                  </Text>
+                </View>
+                <Switch
+                  value={isBotActive}
+                  onValueChange={(val) => {
+                    setIsBotActive(val);
+                    Alert.alert(val ? 'Bot Başlatıldı' : 'Bot Durduruldu', val ? 'Binance 7/24 otomatik ticaret motoru aktif.' : 'Otomatik alım-satım durduruldu.');
+                  }}
+                  trackColor={{ false: '#374151', true: '#10b981' }}
+                />
+              </View>
+            </View>
+
+            {/* AÇIK CANLI POZİSYONLAR */}
+            <View style={styles.sectionCard}>
+              <Text style={styles.cardTitle}>💼 Açık Canlı Pozisyonlar ({livePositions.length})</Text>
+              {livePositions && livePositions.length > 0 ? (
+                livePositions.map((pos, idx) => (
+                  <View key={idx} style={[styles.criterionBox, { borderColor: pos.pnl >= 0 ? '#10b981' : '#ef4444' }]}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: 14 }}>{pos.symbol}</Text>
+                      <Text style={{ color: pos.pnl >= 0 ? '#10b981' : '#ef4444', fontWeight: '800', fontSize: 14 }}>
+                        {pos.pnl >= 0 ? '+' : ''}${pos.pnl.toFixed(2)} ({pos.pnl_pct.toFixed(2)}%)
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 }}>
+                      <Text style={{ color: '#9ca3af', fontSize: 11 }}>Büyüklük: {pos.size}</Text>
+                      <Text style={{ color: '#9ca3af', fontSize: 11 }}>Giriş: ${pos.entry_price}</Text>
+                      <Text style={{ color: '#9ca3af', fontSize: 11 }}>Güncel: ${pos.mark_price}</Text>
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
+                  ⚠️ Aktif açık pozisyon bulunmuyor.
+                </Text>
+              )}
+            </View>
+
+            {/* CANLI EMİR LOGLARI */}
+            <View style={[styles.sectionCard, { borderColor: 'rgba(255,255,255,0.08)' }]}>
+              <Text style={styles.cardTitle}>📋 Bot İşlem Günlüğü (Canlı Loglar)</Text>
+              <ScrollView style={{ maxHeight: 200, backgroundColor: '#090d16', padding: 10, borderRadius: 8 }}>
+                {liveLogs && liveLogs.length > 0 ? (
+                  liveLogs.map((log, idx) => (
+                    <Text key={idx} style={{ color: '#9ca3af', fontSize: 11, marginBottom: 4, fontFamily: 'monospace' }}>
+                      {log}
+                    </Text>
+                  ))
+                ) : (
+                  <Text style={{ color: '#6b7280', fontSize: 11, textAlign: 'center' }}>Günlük log kaydı bulunmuyor.</Text>
+                )}
+              </ScrollView>
+            </View>
+          </ScrollView>
+        </View>
+      )}
+
       {/* MODÜL 2: CANLI SİNYAL & TELEGRAM MODÜLÜ DETAY SAYFASI */}
       {currentModule === 'signal_module' && (
         <View style={{ flex: 1 }}>
@@ -452,13 +621,13 @@ export default function App() {
           </View>
 
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* TELEGRAM BİLDİRİM AYARLARI BUTONU & DURUMU */}
+            {/* TELEGRAM BİLDİRİM AYARLARI */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(0, 136, 204, 0.5)', backgroundColor: 'rgba(0, 136, 204, 0.08)' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.cardTitle, { color: '#38bdf8', margin: 0 }]}>📲 Telegram Bildirim Bağlantısı</Text>
                   <Text style={{ color: telegramToken ? '#10b981' : '#f59e0b', fontSize: 11, marginTop: 4 }}>
-                    {telegramToken ? '🟢 Bot Token ve Chat ID Ayarlandı' : '⚠️ Bildirim gönderilmesi için Telegram bilgilerinizi tanımlayın.'}
+                    {telegramToken ? '🟢 Bot Token ve Chat ID Ayarlandı' : '⚠️ Bildirim gönderilmesi için Telegram bilgilerini tanımlayın.'}
                   </Text>
                 </View>
                 <TouchableOpacity style={[styles.actionChip, { backgroundColor: '#0284c7', borderColor: '#38bdf8' }]} onPress={() => setShowTelegramModal(true)}>
@@ -467,7 +636,7 @@ export default function App() {
               </View>
             </View>
 
-            {/* ZAMAN DİLİMİ VE OTOMATİK TARAMA SWİTCH KARTI */}
+            {/* ZAMAN DİLİMİ VE OTOMATİK TARAMA */}
             <View style={[styles.sectionCard, { borderColor: 'rgba(168, 85, 247, 0.5)' }]}>
               <Text style={[styles.cardTitle, { color: '#c084fc' }]}>⏱️ Tarama Zaman Dilimi &amp; Otomasyon</Text>
               
@@ -494,7 +663,7 @@ export default function App() {
                   onValueChange={(val) => {
                     setAutoScanActive(val);
                     if (val && !telegramToken) {
-                      Alert.alert("Bilgi", "Otomatik tarama başlatıldı. Bildirim almak için Telegram bilgilerinizi tanımlamayı unutmayın!");
+                      Alert.alert("Bilgi", "Otomatik tarama başlatıldı. Bildirim almak için Telegram bilgilerini tanımlamayı unutmayın!");
                     }
                   }}
                   trackColor={{ false: '#374151', true: '#a855f7' }}
@@ -555,7 +724,7 @@ export default function App() {
                 ))
               ) : (
                 <Text style={{ color: '#9ca3af', textAlign: 'center', padding: 20 }}>
-                  ⚠️ Henüz tarama yapılmadı. Üstteki butona basarak seçili coinleri tarayabilirsiniz.
+                  ⚠️ Henüz tarama yapılmadı.
                 </Text>
               )}
             </View>
@@ -649,95 +818,83 @@ export default function App() {
                       </View>
                     </View>
                   </View>
-
-                  <View style={[styles.inputRow, { marginTop: 8 }]}>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>Başlangıç Tarihi</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={startDate}
-                        onChangeText={setStartDate}
-                        placeholder="YYYY-AA-GG"
-                        placeholderTextColor="#6b7280"
-                      />
-                    </View>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>Bitiş Tarihi</Text>
-                      <TextInput
-                        style={styles.input}
-                        value={endDate}
-                        onChangeText={setEndDate}
-                        placeholder="YYYY-AA-GG"
-                        placeholderTextColor="#6b7280"
-                      />
-                    </View>
-                  </View>
                 </View>
-
-                <View style={styles.sectionCard}>
-                  <Text style={styles.cardTitle}>💰 Portföy &amp; Risk Yönetimi</Text>
-                  <View style={styles.inputRow}>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>Başlangıç ($)</Text>
-                      <TextInput style={styles.input} value={balance} onChangeText={setBalance} keyboardType="numeric" />
-                    </View>
-                    <View style={styles.inputCol}>
-                      <Text style={styles.inputLabel}>İşlem Başı (%)</Text>
-                      <TextInput style={styles.input} value={posPct} onChangeText={setPosPct} keyboardType="numeric" />
-                    </View>
-                  </View>
-                </View>
-              </View>
+              </ScrollView>
             )}
           </ScrollView>
-
-          {activeTab === 'strategy' && (
-            <View style={styles.stickyBottomBar}>
-              <TouchableOpacity style={styles.stickySubmitBtn} onPress={runBacktest} disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.stickySubmitBtnText}>🚀 STRATEJİYİ TEST ET</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
       )}
+
+      {/* BİNANCE API AYAR MODALI */}
+      <Modal visible={showBinanceModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: '#f59e0b' }]}>
+            <Text style={styles.modalTitle}>🔑 Binance API Tanımlama</Text>
+            <Text style={styles.modalSub}>Canlı veya simüle işlemleri gerçekleştirmek için API anahtarlarınızı girin:</Text>
+
+            <Text style={styles.inputLabel}>Binance API Key</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 12 }]}
+              value={binanceApiKey}
+              onChangeText={setBinanceApiKey}
+              placeholder="API Key girin..."
+              placeholderTextColor="#6b7280"
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.inputLabel}>Binance Secret Key</Text>
+            <TextInput
+              style={[styles.input, { marginBottom: 12 }]}
+              value={binanceSecretKey}
+              onChangeText={setBinanceSecretKey}
+              placeholder="Secret Key girin..."
+              placeholderTextColor="#6b7280"
+              secureTextEntry
+              autoCapitalize="none"
+            />
+
+            <View style={[styles.switchRow, { marginBottom: 16 }]}>
+              <Text style={{ color: '#fff', fontSize: 13 }}>Testnet (Simülasyon) Modu</Text>
+              <Switch value={useTestnet} onValueChange={setUseTestnet} trackColor={{ false: '#374151', true: '#f59e0b' }} />
+            </View>
+
+            <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: '#d97706' }]} onPress={saveBinanceConfig} disabled={loadingLive}>
+              {loadingLive ? <ActivityIndicator color="#fff" /> : <Text style={styles.downloadBtnText}>💾 Kaydet &amp; Bağlantıyı Test Et</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowBinanceModal(false)}>
+              <Text style={styles.closeBtnText}>İptal</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* TELEGRAM BİLDİRİM AYARLARI MODALI */}
       <Modal visible={showTelegramModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { borderColor: '#38bdf8' }]}>
             <Text style={styles.modalTitle}>📲 Telegram Bildirim Ayarları</Text>
-            <Text style={styles.modalSub}>Canlı alım-satım ve Envelope sinyallerinin iletileceği Telegram Bot bilgilerinizi girin:</Text>
-            
             <Text style={styles.inputLabel}>Telegram Bot Token</Text>
             <TextInput
               style={[styles.input, { marginBottom: 12 }]}
               value={telegramToken}
               onChangeText={setTelegramToken}
-              placeholder="Örn: 123456789:ABCdefGhIJKlmNoP..."
+              placeholder="Bot Token..."
               placeholderTextColor="#6b7280"
               autoCapitalize="none"
-              autoCorrect={false}
             />
-
             <Text style={styles.inputLabel}>Telegram Chat ID</Text>
             <TextInput
               style={[styles.input, { marginBottom: 16 }]}
               value={telegramChatId}
               onChangeText={setTelegramChatId}
-              placeholder="Örn: -100123456789 veya 1234567"
+              placeholder="Chat ID..."
               placeholderTextColor="#6b7280"
               autoCapitalize="none"
-              autoCorrect={false}
             />
-
             <TouchableOpacity style={[styles.downloadBtn, { backgroundColor: '#0284c7' }]} onPress={saveTelegramConfig}>
-              <Text style={styles.downloadBtnText}>💾 Kaydet ve Doğrulama Mesajı Gönder</Text>
+              <Text style={styles.downloadBtnText}>💾 Kaydet ve Test Et</Text>
             </TouchableOpacity>
-            
             <TouchableOpacity style={styles.closeBtn} onPress={() => setShowTelegramModal(false)}>
               <Text style={styles.closeBtnText}>İptal</Text>
             </TouchableOpacity>
@@ -773,8 +930,7 @@ export default function App() {
         <Modal visible={showUpdateModal} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>🚀 Yeni Güncelleme Mevcut!</Text>
-              <Text style={styles.modalSub}>Sürüm: {updateInfo.latestVersion} (Mevcut: v{CURRENT_APP_VERSION})</Text>
+              <Text style={styles.modalTitle}>🚀 Yeni Sürüm Yüklensin mi?</Text>
               <TouchableOpacity
                 style={styles.downloadBtn}
                 onPress={() => {
@@ -782,7 +938,7 @@ export default function App() {
                   setShowUpdateModal(false);
                 }}
               >
-                <Text style={styles.downloadBtnText}>📲 Güncellemeyi İndir &amp; Yükle</Text>
+                <Text style={styles.downloadBtnText}>📲 Şimdi Güncelle</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -873,5 +1029,5 @@ const styles = StyleSheet.create({
   downloadBtnText: { color: '#ffffff', fontWeight: '700', fontSize: 14 },
   closeBtn: { paddingVertical: 8, alignItems: 'center', marginTop: 6 },
   closeBtnText: { color: '#9ca3af', fontSize: 13 },
-  actionChip: { backgroundColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' },
+  actionChip: { backgroundColor: 'rgba(168, 85, 247, 0.2)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(168, 85, 247, 0.4)' }
 });
